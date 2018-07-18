@@ -12,6 +12,9 @@
     limit要る？
     file open各種はoperate_fileでできるのではないか
  */
+
+int i;
+char *ptr;
 EC_PAIRING p;
 EC_POINT P, Q;
 mpz_t limit, a, b, r;
@@ -20,43 +23,71 @@ void output_base_variable();
 
 // ファイルを暗号化する関数
 void encryption_file(char *in_file_name, char *out_file_name) {
-
+/* --- ファイルの操作 --- */
+    /* --- fopen --- */
     FILE *fin, *fout;
     fin  = fopen(in_file_name, "rb");
     fout = fopen(out_file_name, "wb");
-    
+    /* --- in_size --- */
     unsigned long in_size = get_file_size(in_file_name);
     printf("size = %lu\n", in_size);
-    
+    /* --- buff --- */
     unsigned char *inbuf, *outbuf;
-    if((inbuf = malloc(sizeof(char)*in_size)) == NULL){
+    if((inbuf = malloc(sizeof(char) * 64)) == NULL){
         printf("inbufのメモリ確保に失敗しました。\n");
         exit(-1);
     }
-    if((outbuf = malloc(sizeof(char)*(int)(in_size))) == NULL) {
+    if((outbuf = malloc(sizeof(char) * 64)) == NULL) { // TODO: 多分64じゃダメ
         printf("outbufのメモリ確保に失敗しました。\n");
         exit(-1);
     }
-    
+
+/* --- Elementの操作 --- */
     /* -- g = e(P, Q)^r を生成 --- */
     Element g; element_init(g, p->g3);
     pairing_map(g, P, Q, p);
     element_pow(g, g, r);
-    print_green_color("g     : "); element_print(g);
-
+    /* --- gの文字列化 --- */
+    int element_g_size = element_get_str_length(g);
+    char *element_g_str;
+    if((element_g_str = (char *)malloc(element_g_size+1)) == NULL){
+        printf("メモリが確保できませんでした。\n");
+        exit(-1);
+    }
+    element_get_str(element_g_str, g);
+    /* --- element_g_strを12分割 --- */
+    char element_g_split_str[12][65]={0};
+    ptr = strtok(element_g_str, " ");
+    strcpy(element_g_split_str[0], ptr); i=1;
+    while(ptr != NULL) {
+        ptr = strtok(NULL, " ");
+        if(ptr != NULL) strcpy(element_g_split_str[i], ptr);
+        i++;
+    }
+    /* --- element_g_strをmpz_tに変換 --- */
+    mpz_t element_g_split_mpz_t[12];
+    for(i=0; i<12; i++){
+        mpz_init(element_g_split_mpz_t[i]);
+        mpz_set_str(element_g_split_mpz_t[i], element_g_split_str[i], 16);
+    }
+    
+    
     int inlen, outlen;
-
-    //    for(;;){
-    //        // ファイルポインタfinからバッファinbufにサイズ1のデータin_size個を読み込む
-    //        // inlenには読み込んだ個数を返却
-    //        inlen = fread(inbuf, 1, in_size, fin);
-    //        if(inlen <= 0) break;
-    //        fwrite(outbuf, 1, outlen, fout);
-    //    }
+    for(i=0; i<in_size/64+1; i++){
+        // ファイルポインタfinからバッファinbufにサイズ1のデータin_size個を読み込む
+        // inlenには読み込んだ個数を返却
+        inlen = fread(inbuf, 1, 64, fin);
+        if(inlen <= 0) break;
+//        printf("inbuf: %s\n", inbuf);
+        // memo ここcharで読み込んじゃダメでは？
+        // 最終的にmpz_tとして扱いたいから、やっぱlongにしてmpz_tに変換が理想かも
+        //            fwrite(outbuf, 1, outlen, fout);
+    }
 
     /* --- 後片付け --- */
     fcloses(fin, fout, NULL);
-    frees(inbuf, outbuf, NULL);
+    frees(inbuf, outbuf, element_g_str, NULL);
+    for(i=0;i<12;i++) mpz_clear(element_g_split_mpz_t[i]);
     element_clear(g);
 }
 
