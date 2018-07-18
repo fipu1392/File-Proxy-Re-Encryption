@@ -28,17 +28,13 @@ void encryption_file(char *in_file_name, char *out_file_name) {
     FILE *fin, *fout;
     fin  = fopen(in_file_name, "rb");
     fout = fopen(out_file_name, "wb");
-    /* --- in_size --- */
-    unsigned long in_size = get_file_size(in_file_name);
-    printf("size = %lu\n", in_size);
+    /* --- file_size --- */
+    unsigned long in_file_size = get_file_size(in_file_name);
+    printf("size = %lu\n", in_file_size);
     /* --- buff --- */
     unsigned char *inbuf, *outbuf;
-    if((inbuf = malloc(sizeof(char) * 64)) == NULL){
+    if((inbuf = malloc(sizeof(char) * in_file_size)) == NULL){
         printf("inbufのメモリ確保に失敗しました。\n");
-        exit(-1);
-    }
-    if((outbuf = malloc(sizeof(char) * 64)) == NULL) { // TODO: 多分64じゃダメ
-        printf("outbufのメモリ確保に失敗しました。\n");
         exit(-1);
     }
 
@@ -65,29 +61,67 @@ void encryption_file(char *in_file_name, char *out_file_name) {
         i++;
     }
     /* --- element_g_strをmpz_tに変換 --- */
-    mpz_t element_g_split_mpz_t[12];
+    mpz_t element_g_split_mpz[12];
     for(i=0; i<12; i++){
-        mpz_init(element_g_split_mpz_t[i]);
-        mpz_set_str(element_g_split_mpz_t[i], element_g_split_str[i], 16);
+        mpz_init(element_g_split_mpz[i]);
+        mpz_set_str(element_g_split_mpz[i], element_g_split_str[i], 16);
     }
     
-    
-    int inlen, outlen;
-    for(i=0; i<in_size/64+1; i++){
-        // ファイルポインタfinからバッファinbufにサイズ1のデータin_size個を読み込む
-        // inlenには読み込んだ個数を返却
-        inlen = fread(inbuf, 1, 64, fin);
-        if(inlen <= 0) break;
-//        printf("inbuf: %s\n", inbuf);
-        // memo ここcharで読み込んじゃダメでは？
-        // 最終的にmpz_tとして扱いたいから、やっぱlongにしてmpz_tに変換が理想かも
-        //            fwrite(outbuf, 1, outlen, fout);
+    /* --- ファイルデータをlong配列->mpz_t配列に落とし込む --- */
+    unsigned long in_file_data_array_size = in_file_size/sizeof(long);
+    unsigned long in_file_data_long[in_file_data_array_size];
+    fread(inbuf, 1, in_file_size, fin);
+    memset(in_file_data_long, 0, sizeof(in_file_data_long));
+    memcpy(in_file_data_long, inbuf, in_file_size);
+    mpz_t in_file_data_mpz[in_file_data_array_size];
+    for(i=0;i<in_file_data_array_size;i++) {
+        mpz_init(in_file_data_mpz[i]);
+        char tmp[100];
+        convert_long_type_into_hex_string(tmp, in_file_data_long[i]);
+        mpz_set_str(in_file_data_mpz[i], tmp, 16);
     }
+    /* --- ファイルデータ(mpz)*element_gの計算) --- */
+    mpz_t in_file_data_calculation_result_mpz[in_file_data_array_size];
+    unsigned long in_file_data_calculation_result_mpz_total_lenth=0;
+    for(i=0;i<in_file_data_array_size;i++) {
+        mpz_init(in_file_data_calculation_result_mpz[i]);
+        mpz_mul(in_file_data_calculation_result_mpz[i], element_g_split_mpz[i%12], in_file_data_mpz[i]);
+        in_file_data_calculation_result_mpz_total_lenth += get_length_type_mpz_t(in_file_data_calculation_result_mpz[i]);
+    }
+    printf("result total length: %ld\n", in_file_data_calculation_result_mpz_total_lenth);
+    
+    if((outbuf = malloc(sizeof(long) * in_file_data_calculation_result_mpz_total_lenth)) == NULL) {
+        printf("outbufのメモリ確保に失敗しました。\n");
+        exit(-1);
+    }
+//    memset(outbuf, 0, in_file_data_calculation_result_mpz_total_lenth);
+//    memcpy(outbuf, in_file_data_calculation_result_mpz, in_file_data_calculation_result_mpz_total_lenth);
+    fwrite(in_file_data_calculation_result_mpz, 1, in_file_data_calculation_result_mpz_total_lenth, fout);
+    
+    
+//    for(i=0;i<sizeof(file_data_long);i++){
+//        printf("file_data_long[%d]: ", i, file_data_long[i]);
+//    }
+//
+//    for(i=0; i<file_size/64+1; i++){
+//        // ファイルポインタfinからバッファinbufにサイズ1のデータfile_size個を読み込む
+//        // inlenには読み込んだ個数を返却
+//        inlen = fread(inbuf, 1, 64, fin);
+//        if(inlen <= 0) break;
+////        printf("inbuf: %s\n", inbuf);
+//        // memo ここcharで読み込んじゃダメでは？
+//        // 最終的にmpz_tとして扱いたいから、やっぱlongにしてmpz_tに変換が理想かも
+//        //            fwrite(outbuf, 1, outlen, fout);
+//    }
 
     /* --- 後片付け --- */
     fcloses(fin, fout, NULL);
     frees(inbuf, outbuf, element_g_str, NULL);
-    for(i=0;i<12;i++) mpz_clear(element_g_split_mpz_t[i]);
+    for(i=0;i<12;i++) mpz_clear(element_g_split_mpz[i]);
+    for(i=0;i<in_file_data_array_size;i++) {
+        mpz_clear(in_file_data_mpz[i]);
+        mpz_clear(in_file_data_calculation_result_mpz[i]);
+    }
     element_clear(g);
 }
 

@@ -74,6 +74,38 @@ int frees(void *ptrs, ...) {
     return 0;
 }
 
+// long型をchar型に変換(16進数表記)
+void convert_long_type_into_hex_string(char *result, const unsigned long x){
+    unsigned long original = x, remainder;
+    *result = '\0';
+    while(1){
+        char tmp = 'A';
+        remainder = original%16;
+        original /= 16;
+        remainder >= 10 ? tmp += remainder-10 : sprintf(&tmp, "%d", remainder);
+        strcat(result, &tmp);
+        if(original == 0) break;
+    }
+    char t, *p, *q;
+    for (p = result, q = &(result[strlen(result)-1]); p < q; p++, q--) t = *p, *p = *q, *q = t;
+}
+
+unsigned long get_length_type_mpz_t(mpz_t num){
+    unsigned long length = 0;
+    mpz_t q, ori, ten;
+    mpz_init(q);
+    mpz_init_set(ori, num);
+    mpz_init_set_ui (ten, 10);
+
+    while (1) {
+        mpz_tdiv_q(q, ori, ten);
+        mpz_set(ori, q);
+        length++;
+        if(mpz_cmp_ui(ori, 0) == 0) break;
+    }
+    return length;
+}
+
 /*                                                            64|
  2147fdedc3256195664ed146bdb5ccd114ff8d9670f068e77e6fd3a2658af687
  1f32dbadc49af3d787c90b7817e20f6b0c29f6b638da827a1de8b07145409cd0
