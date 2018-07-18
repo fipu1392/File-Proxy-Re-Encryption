@@ -6,10 +6,9 @@
 #include <tepla/ec.h>
 #include "settings.h"
 
-#define DEBUG 1 // 0: false 1: true
+#define DEBUG 0 // 0: false 1: true
 
 /* --- memo
-    limit要る？
     file open各種はoperate_fileでできるのではないか
  */
 
@@ -22,19 +21,12 @@ mpz_t limit, a, b, r;
 void output_base_variable();
 
 // ファイルを暗号化する関数
-void encryption_file(char *in_file_name, char *out_file_name) {
-/* --- ファイルの操作 --- */
-    /* --- fopen --- */
-    FILE *fin, *fout;
-    fin  = fopen(in_file_name, "rb");
-    fout = fopen(out_file_name, "wb");
-    /* --- file_size --- */
-    unsigned long in_file_size = get_file_size(in_file_name);
-    printf("size = %lu\n", in_file_size);
-    /* --- buff --- */
-    unsigned char *inbuf, *outbuf;
-    if((inbuf = malloc(sizeof(char) * in_file_size)) == NULL){
-        printf("inbufのメモリ確保に失敗しました。\n");
+void encryption_file(FILE *in_file, FILE *out_file, unsigned long in_file_size) {
+
+/* --- buff --- */
+    unsigned char *in_file_buffer, *out_file_buffer;
+    if((in_file_buffer = malloc(sizeof(char) * in_file_size)) == NULL){
+        printf("in_file_bufferのメモリ確保に失敗しました。\n");
         exit(-1);
     }
 
@@ -47,7 +39,7 @@ void encryption_file(char *in_file_name, char *out_file_name) {
     int element_g_size = element_get_str_length(g);
     char *element_g_str;
     if((element_g_str = (char *)malloc(element_g_size+1)) == NULL){
-        printf("メモリが確保できませんでした。\n");
+        printf("element_g_strのメモリが確保できませんでした。\n");
         exit(-1);
     }
     element_get_str(element_g_str, g);
@@ -70,9 +62,9 @@ void encryption_file(char *in_file_name, char *out_file_name) {
     /* --- ファイルデータをlong配列->mpz_t配列に落とし込む --- */
     unsigned long in_file_data_array_size = in_file_size/sizeof(long);
     unsigned long in_file_data_long[in_file_data_array_size];
-    fread(inbuf, 1, in_file_size, fin);
+    fread(in_file_buffer, 1, in_file_size, in_file);
     memset(in_file_data_long, 0, sizeof(in_file_data_long));
-    memcpy(in_file_data_long, inbuf, in_file_size);
+    memcpy(in_file_data_long, in_file_buffer, in_file_size);
     mpz_t in_file_data_mpz[in_file_data_array_size];
     for(i=0;i<in_file_data_array_size;i++) {
         mpz_init(in_file_data_mpz[i]);
@@ -88,35 +80,19 @@ void encryption_file(char *in_file_name, char *out_file_name) {
         mpz_mul(in_file_data_calculation_result_mpz[i], element_g_split_mpz[i%12], in_file_data_mpz[i]);
         in_file_data_calculation_result_mpz_total_lenth += get_length_type_mpz_t(in_file_data_calculation_result_mpz[i]);
     }
-    printf("result total length: %ld\n", in_file_data_calculation_result_mpz_total_lenth);
+    if(DEBUG) printf("result total length: %ld\n", in_file_data_calculation_result_mpz_total_lenth);
     
-    if((outbuf = malloc(sizeof(long) * in_file_data_calculation_result_mpz_total_lenth)) == NULL) {
-        printf("outbufのメモリ確保に失敗しました。\n");
+    if((out_file_buffer = malloc(sizeof(long) * in_file_data_calculation_result_mpz_total_lenth)) == NULL) {
+        printf("out_file_bufferのメモリ確保に失敗しました。\n");
         exit(-1);
     }
-//    memset(outbuf, 0, in_file_data_calculation_result_mpz_total_lenth);
-//    memcpy(outbuf, in_file_data_calculation_result_mpz, in_file_data_calculation_result_mpz_total_lenth);
-    fwrite(in_file_data_calculation_result_mpz, 1, in_file_data_calculation_result_mpz_total_lenth, fout);
-    
-    
-//    for(i=0;i<sizeof(file_data_long);i++){
-//        printf("file_data_long[%d]: ", i, file_data_long[i]);
-//    }
-//
-//    for(i=0; i<file_size/64+1; i++){
-//        // ファイルポインタfinからバッファinbufにサイズ1のデータfile_size個を読み込む
-//        // inlenには読み込んだ個数を返却
-//        inlen = fread(inbuf, 1, 64, fin);
-//        if(inlen <= 0) break;
-////        printf("inbuf: %s\n", inbuf);
-//        // memo ここcharで読み込んじゃダメでは？
-//        // 最終的にmpz_tとして扱いたいから、やっぱlongにしてmpz_tに変換が理想かも
-//        //            fwrite(outbuf, 1, outlen, fout);
-//    }
+//    memset(out_file_buffer, 0, in_file_data_calculation_result_mpz_total_lenth);
+//    memcpy(out_file_buffer, in_file_data_calculation_result_mpz, in_file_data_calculation_result_mpz_total_lenth);
+    fwrite(in_file_data_calculation_result_mpz, 1, in_file_data_calculation_result_mpz_total_lenth, out_file);
 
     /* --- 後片付け --- */
-    fcloses(fin, fout, NULL);
-    frees(inbuf, outbuf, element_g_str, NULL);
+    fcloses(in_file, out_file, NULL);
+    frees(in_file_buffer, out_file_buffer, element_g_str, NULL);
     for(i=0;i<12;i++) mpz_clear(element_g_split_mpz[i]);
     for(i=0;i<in_file_data_array_size;i++) {
         mpz_clear(in_file_data_mpz[i]);
@@ -142,9 +118,18 @@ void decode_re_encryption_file(char *in_file_name, char *out_file_name) {
 
 // ファイル操作の指定をする関数
 void operate_file(int mode, char *in_file_name, char *out_file_name) {
+/* --- ファイルの操作 --- */
+    /* --- fopen --- */
+    FILE *in_file, *out_file;
+    in_file  = fopen(in_file_name, "rb");
+    out_file = fopen(out_file_name, "wb");
+    /* --- file_size --- */
+    unsigned long in_file_size = get_file_size(in_file_name);
+    printf("size = %lu\n", in_file_size);
+
     switch (mode) {
         case 1:
-            encryption_file(in_file_name, out_file_name);
+            encryption_file(in_file, out_file, in_file_size);
             break;
         case 2:
             re_encryption_file(in_file_name, out_file_name);
