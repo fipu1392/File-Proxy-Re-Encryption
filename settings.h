@@ -74,7 +74,11 @@ int frees(void *ptrs, ...) {
     return 0;
 }
 
-// long型をchar型に変換(16進数表記)
+/* -----------------------------------------------
+ * 符号なしlong型整数を16進数表記のchar型文字列に変換する関数
+ * $0 変換結果を入れるchar型配列のアドレス
+ * $1 変換したい符号なしlong型整数
+ -----------------------------------------------*/
 void convert_long_type_into_hex_string(char *result, const unsigned long x){
     unsigned long original = x;
     *result = '\0';
@@ -87,19 +91,24 @@ void convert_long_type_into_hex_string(char *result, const unsigned long x){
     for (p = result, q = &(result[strlen(result)-1]); p < q; p++, q--) t = *p, *p = *q, *q = t;
 }
 
-// char型(16進数表記)をlong型に変換
-unsigned long convert_hex_string_into_long_type(const char *result){
-    unsigned long result, exp=1;
-    
-    int length = strlen(result)-1, i;
-    for(i=0, i<length, i++){
-        char tmp_char = *(result+(length-i));
-        int tmp_int;
-        sscanf(tmp_char, "%X", &tmp_int);
-        result += tmp_int*exp;
+/* -----------------------------------------------
+ * 16進数表記のchar型文字列を符号なしlong型整数に変換する関数
+ * $0 変換したいchar型配列のアドレス
+ * @return 変換結果の符号なしlong型整数
+ -----------------------------------------------*/
+unsigned long convert_hex_string_into_long_type(const char *x){
+    unsigned long result=0, exp=1;
+    int length = strlen(x)-1, i;
+    for(i=length; i>=0; i--){
+        char tmp_char = *(x+i);
+        unsigned long tmp_long;
+        sscanf(&tmp_char, "%X", &tmp_long);
+        result += tmp_long*exp;
         exp *= 16;
     }
+    return result;
 }
+
 
 unsigned long get_length_type_mpz_t(mpz_t num){
     unsigned long length = 0;

@@ -28,14 +28,13 @@ void output_base_variable();
 void encryption_file(char *in_file_name, char *out_file_name) {
 /* --- ファイルの操作 --- */
     /* --- fopen --- */
-    FILE *in_file, *out_file;
     int in_file_descriptor, out_file_descriptor, read_in_file_bytes_count;
     in_file_descriptor  = open(in_file_name, O_RDONLY); // TODO: ifにまとめる
     if(in_file_descriptor == -1){
         printf("%sのopenに失敗しました。\n", in_file_name);
         exit(-1);
     }
-    out_file_descriptor = open(out_file_name, O_WRONLY);
+    out_file_descriptor = open(out_file_name, O_WRONLY|O_CREAT);
     if(out_file_descriptor == -1){
         printf("%sのopenに失敗しました。\n", out_file_name);
         close(in_file_descriptor);
@@ -46,8 +45,8 @@ void encryption_file(char *in_file_name, char *out_file_name) {
     printf("size = %lu\n", in_file_size);
 
     /* --- buff --- */
-    unsigned char *in_file_buffer, *out_file_buffer;
-    if((in_file_buffer = malloc(sizeof(char) * in_file_size)) == NULL){ // TODD: buffはcharじゃなくてInt?
+    unsigned long *in_file_buffer, *out_file_buffer;
+    if((in_file_buffer = malloc(sizeof(unsigned long) * in_file_size)) == NULL){
         printf("in_file_bufferのメモリ確保に失敗しました。\n");
         exit(-1);
     }
@@ -66,74 +65,74 @@ void encryption_file(char *in_file_name, char *out_file_name) {
     Element g; element_init(g, p->g3);
     pairing_map(g, P, Q, p);
     element_pow(g, g, r);
-    /* --- gの文字列化 --- */
-    int element_g_size = element_get_str_length(g);
-    char *element_g_str;
-    if((element_g_str = (char *)malloc(element_g_size+1)) == NULL){
-        printf("element_g_strのメモリが確保できませんでした。\n");
-        exit(-1);
-    }
-    element_get_str(element_g_str, g);
-    /* --- element_g_strを12分割 --- */
-    char element_g_split_str[12][65]={0};
-    ptr = strtok(element_g_str, " ");
-    strcpy(element_g_split_str[0], ptr); i=1;
-    while(ptr != NULL) {
-        ptr = strtok(NULL, " ");
-        if(ptr != NULL) strcpy(element_g_split_str[i], ptr);
-        i++;
-    }
-    /* --- element_g_strをmpz_tに変換 --- */
-    mpz_t element_g_split_mpz[12];
-    for(i=0; i<12; i++){
-        mpz_init(element_g_split_mpz[i]);
-        mpz_set_str(element_g_split_mpz[i], element_g_split_str[i], 16);
-    }
 
-    /* --- ファイルデータをlong配列->mpz_t配列に落とし込む --- */
-    unsigned long in_file_data_array_size = in_file_size/sizeof(long);
-    unsigned long in_file_data_long[in_file_data_array_size];
-//    fread(in_file_buffer, 1, in_file_size, in_file);
-    memset(in_file_data_long, 0, sizeof(in_file_data_long));
-    memcpy(in_file_data_long, in_file_buffer, in_file_size);
-    mpz_t in_file_data_mpz[in_file_data_array_size];
-    for(i=0;i<in_file_data_array_size;i++) {
-        mpz_init(in_file_data_mpz[i]);
+    /* --- ファイルデータlong型->16進数表記のchar型->Element型に変換 --- */
+    Element element_file[in_file_size/12+1];
+    char element_assign_str[1000] = "";
+    int element_file_index_counter = 0;
+    int counter = 0;
+    for(i=0;i<in_file_size/sizeof(unsigned long)+1;i++) {
         char tmp[100];
-        convert_long_type_into_hex_string(tmp, in_file_data_long[i]);
-        mpz_set_str(in_file_data_mpz[i], tmp, 16);
+        convert_long_type_into_hex_string(tmp, in_file_buffer[i]);
+        strcat(element_assign_str, tmp);
+        counter++;
+        if(counter == 12) {
+            element_init(element_file[element_file_index_counter], p->g3);
+            element_set_str(element_file[element_file_index_counter++], element_assign_str);
+            strcpy(element_assign_str, "");
+            counter = 0;
+        } else {
+            strcat(element_assign_str, " ");
+        }
     }
-    /* --- ファイルデータ(mpz)*element_gの計算) --- */
-    mpz_t in_file_data_calculation_result_mpz[in_file_data_array_size];
-    unsigned long in_file_data_calculation_result_mpz_total_lenth=0;
-    for(i=0;i<in_file_data_array_size;i++) {
-        mpz_init(in_file_data_calculation_result_mpz[i]);
-        mpz_mul(in_file_data_calculation_result_mpz[i], element_g_split_mpz[i%12], in_file_data_mpz[i]);
-        in_file_data_calculation_result_mpz_total_lenth += get_length_type_mpz_t(in_file_data_calculation_result_mpz[i]);
+    if(counter != 0){ // 残りカスの処理
+        while(1){
+            strcat(element_assign_str, "0");
+            counter++;
+            if(counter!=12) strcat(element_assign_str, " ");
+            else break;
+        }
+        element_init(element_file[element_file_index_counter], p->g3);
+        element_set_str(element_file[element_file_index_counter++], element_assign_str);
     }
-    if(DEBUG) printf("result total length: %ld\n", in_file_data_calculation_result_mpz_total_lenth);
+    printf("element_file_index_counter: %d\n",element_file_index_counter);
+    if(DEBUG) for(i=0;i<element_file_index_counter;i++){
+        printf("element_file[%d]: ",i);
+        element_print(element_file[i]);
+    }
+    
+    /* --- ファイルデータの計算(g*element_file) --- */
+    unsigned long in_file_data_calculation_result_element_total_lenth = 0;
+    Element element_file_key_calc_result[element_file_index_counter];
+    for(i=0;i<element_file_index_counter;i++) {
+        element_init(element_file_key_calc_result[i], p->g3);
+        element_mul(element_file_key_calc_result[i], element_file[i], g);
+        in_file_data_calculation_result_element_total_lenth += element_get_str_length(element_file_key_calc_result[i]);
+    }
 
-    if((out_file_buffer = malloc(sizeof(long) * in_file_data_calculation_result_mpz_total_lenth)) == NULL) {
+    if((out_file_buffer = malloc(sizeof(unsigned long) * in_file_data_calculation_result_element_total_lenth)) == NULL) { // 今の所使ってない
         printf("out_file_bufferのメモリ確保に失敗しました。\n");
         exit(-1);
     }
-    
-    memset(out_file_buffer, 0, in_file_data_calculation_result_mpz_total_lenth);
-    memcpy(out_file_buffer, in_file_data_calculation_result_mpz, in_file_data_calculation_result_mpz_total_lenth);
-//    write(out_file_descriptor, out_file_buffer, )
-//    fwrite(in_file_data_calculation_result_mpz, 1, in_file_data_calculation_result_mpz_total_lenth, out_file);
-//
-//    /* --- 後片付け --- */
-//    close(in_file_descriptor);
-//    close(out_file_descriptor);
-//    fcloses(in_file, out_file, NULL);
-//    frees(in_file_buffer, out_file_buffer, element_g_str, NULL);
-//    for(i=0;i<12;i++) mpz_clear(element_g_split_mpz[i]);
-//    for(i=0;i<in_file_data_array_size;i++) {
-//        mpz_clear(in_file_data_mpz[i]);
-//        mpz_clear(in_file_data_calculation_result_mpz[i]);
-//    }
-//    element_clear(g);
+    printf("in_file_data_calculation_result_element_total_lenth: %d\n",in_file_data_calculation_result_element_total_lenth);
+    if(DEBUG) for(i=0;i<element_file_index_counter;i++){
+        printf("element_file_key_calc_result[%d]: ",i);
+        element_print(element_file_key_calc_result[i]);
+    }
+
+//    memset(out_file_buffer, 0, in_file_data_calculation_result_element_total_lenth);
+//    memcpy(out_file_buffer, element_file_key_calc_result, 301236000);
+    write(out_file_descriptor, element_file_key_calc_result, in_file_data_calculation_result_element_total_lenth);
+
+    /* --- 後片付け --- */
+    close(in_file_descriptor);
+    close(out_file_descriptor);
+    frees(in_file_buffer, out_file_buffer, NULL);
+    for(i=0;i<element_file_index_counter;i++){
+        element_clear(element_file[i]);
+        element_clear(element_file_key_calc_result[i]);
+    }
+    element_clear(g);
 }
 
 // ファイルを再暗号化する関数
