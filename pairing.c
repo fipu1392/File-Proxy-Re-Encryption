@@ -1,5 +1,9 @@
 // gcc -o pairing pairing.c -ltepla -lssl -lgmp -lcrypto -std=c99
 
+
+#include <fcntl.h> //open
+#include <unistd.h> //close lseek
+
 #include <gmp.h>
 #include <dirent.h>
 #include <sys/time.h>
@@ -21,15 +25,42 @@ mpz_t limit, a, b, r;
 void output_base_variable();
 
 // ファイルを暗号化する関数
-void encryption_file(FILE *in_file, FILE *out_file, unsigned long in_file_size) {
+void encryption_file(char *in_file_name, char *out_file_name) {
+/* --- ファイルの操作 --- */
+    /* --- fopen --- */
+    FILE *in_file, *out_file;
+    int in_file_descriptor, out_file_descriptor, read_in_file_bytes_count;
+    in_file_descriptor  = open(in_file_name, O_RDONLY); // TODO: ifにまとめる
+    if(in_file_descriptor == -1){
+        printf("%sのopenに失敗しました。\n", in_file_name);
+        exit(-1);
+    }
+    out_file_descriptor = open(out_file_name, O_WRONLY);
+    if(out_file_descriptor == -1){
+        printf("%sのopenに失敗しました。\n", out_file_name);
+        close(in_file_descriptor);
+        exit(-1);
+    }
+    /* --- file_size --- */
+    unsigned long in_file_size = get_file_size(in_file_name);
+    printf("size = %lu\n", in_file_size);
 
-/* --- buff --- */
+    /* --- buff --- */
     unsigned char *in_file_buffer, *out_file_buffer;
-    if((in_file_buffer = malloc(sizeof(char) * in_file_size)) == NULL){
+    if((in_file_buffer = malloc(sizeof(char) * in_file_size)) == NULL){ // TODD: buffはcharじゃなくてInt?
         printf("in_file_bufferのメモリ確保に失敗しました。\n");
         exit(-1);
     }
 
+    read_in_file_bytes_count = read(in_file_descriptor, in_file_buffer, in_file_size);
+    if(read_in_file_bytes_count == -1){
+        printf("%sのreadに失敗しました。\n", in_file_name);
+        close(in_file_descriptor); close(out_file_descriptor);
+        exit(-1);
+    }
+    if(DEBUG) printf("in_file_size: %ld\n", in_file_size);
+    if(DEBUG) printf("read_in_file_bytes_count: %d\n", read_in_file_bytes_count);
+    
 /* --- Elementの操作 --- */
     /* -- g = e(P, Q)^r を生成 --- */
     Element g; element_init(g, p->g3);
@@ -58,11 +89,11 @@ void encryption_file(FILE *in_file, FILE *out_file, unsigned long in_file_size) 
         mpz_init(element_g_split_mpz[i]);
         mpz_set_str(element_g_split_mpz[i], element_g_split_str[i], 16);
     }
-    
+
     /* --- ファイルデータをlong配列->mpz_t配列に落とし込む --- */
     unsigned long in_file_data_array_size = in_file_size/sizeof(long);
     unsigned long in_file_data_long[in_file_data_array_size];
-    fread(in_file_buffer, 1, in_file_size, in_file);
+//    fread(in_file_buffer, 1, in_file_size, in_file);
     memset(in_file_data_long, 0, sizeof(in_file_data_long));
     memcpy(in_file_data_long, in_file_buffer, in_file_size);
     mpz_t in_file_data_mpz[in_file_data_array_size];
@@ -81,24 +112,28 @@ void encryption_file(FILE *in_file, FILE *out_file, unsigned long in_file_size) 
         in_file_data_calculation_result_mpz_total_lenth += get_length_type_mpz_t(in_file_data_calculation_result_mpz[i]);
     }
     if(DEBUG) printf("result total length: %ld\n", in_file_data_calculation_result_mpz_total_lenth);
-    
+
     if((out_file_buffer = malloc(sizeof(long) * in_file_data_calculation_result_mpz_total_lenth)) == NULL) {
         printf("out_file_bufferのメモリ確保に失敗しました。\n");
         exit(-1);
     }
-//    memset(out_file_buffer, 0, in_file_data_calculation_result_mpz_total_lenth);
-//    memcpy(out_file_buffer, in_file_data_calculation_result_mpz, in_file_data_calculation_result_mpz_total_lenth);
-    fwrite(in_file_data_calculation_result_mpz, 1, in_file_data_calculation_result_mpz_total_lenth, out_file);
-
-    /* --- 後片付け --- */
-    fcloses(in_file, out_file, NULL);
-    frees(in_file_buffer, out_file_buffer, element_g_str, NULL);
-    for(i=0;i<12;i++) mpz_clear(element_g_split_mpz[i]);
-    for(i=0;i<in_file_data_array_size;i++) {
-        mpz_clear(in_file_data_mpz[i]);
-        mpz_clear(in_file_data_calculation_result_mpz[i]);
-    }
-    element_clear(g);
+    
+    memset(out_file_buffer, 0, in_file_data_calculation_result_mpz_total_lenth);
+    memcpy(out_file_buffer, in_file_data_calculation_result_mpz, in_file_data_calculation_result_mpz_total_lenth);
+//    write(out_file_descriptor, out_file_buffer, )
+//    fwrite(in_file_data_calculation_result_mpz, 1, in_file_data_calculation_result_mpz_total_lenth, out_file);
+//
+//    /* --- 後片付け --- */
+//    close(in_file_descriptor);
+//    close(out_file_descriptor);
+//    fcloses(in_file, out_file, NULL);
+//    frees(in_file_buffer, out_file_buffer, element_g_str, NULL);
+//    for(i=0;i<12;i++) mpz_clear(element_g_split_mpz[i]);
+//    for(i=0;i<in_file_data_array_size;i++) {
+//        mpz_clear(in_file_data_mpz[i]);
+//        mpz_clear(in_file_data_calculation_result_mpz[i]);
+//    }
+//    element_clear(g);
 }
 
 // ファイルを再暗号化する関数
@@ -118,18 +153,11 @@ void decode_re_encryption_file(char *in_file_name, char *out_file_name) {
 
 // ファイル操作の指定をする関数
 void operate_file(int mode, char *in_file_name, char *out_file_name) {
-/* --- ファイルの操作 --- */
-    /* --- fopen --- */
-    FILE *in_file, *out_file;
-    in_file  = fopen(in_file_name, "rb");
-    out_file = fopen(out_file_name, "wb");
-    /* --- file_size --- */
-    unsigned long in_file_size = get_file_size(in_file_name);
-    printf("size = %lu\n", in_file_size);
+
 
     switch (mode) {
         case 1:
-            encryption_file(in_file, out_file, in_file_size);
+            encryption_file(in_file_name, out_file_name);
             break;
         case 2:
             re_encryption_file(in_file_name, out_file_name);
