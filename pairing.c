@@ -115,11 +115,12 @@ int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, 
     return 1;
 }
 
-// 暗号化時に鍵をメモに出力する関数
-void make_crypted_AES_key_memo(unsigned char *key, unsigned char *outfolda) {
+// 鍵を出力する関数
+void output_key_txt(int mode, unsigned char *key, unsigned char *outfolda) {
     FILE *outfile;
     char openfilename[1000];
-    sprintf(openfilename,"%s/key.txt",outfolda);
+    if(mode == 1) sprintf(openfilename,"%s/key.txt",outfolda);
+    if(mode == 2) sprintf(openfilename,"%s/Re-key.txt",outfolda);
     outfile = fopen(openfilename, "w+");
     if (outfile == NULL) {
         printf("cannot open\n");
@@ -129,21 +130,18 @@ void make_crypted_AES_key_memo(unsigned char *key, unsigned char *outfolda) {
     fclose(outfile);
 }
 
-// 復号時に鍵を読み込む関数　(今は復号の関数もある deprecated)
-void load_and_decrypto_AES_key(unsigned char *key, unsigned char *infolda) {
+// 鍵を読み込む関数
+void load_key_txt(int mode, unsigned char *key, unsigned char *infolda) {
     FILE *loadfile;
     char loadfilename[1000];
-    sprintf(loadfilename,"%s/key.txt",infolda);
+    if(mode == 2 || mode == 3) sprintf(loadfilename,"%s/key.txt",infolda);
+    if(mode == 4) sprintf(loadfilename,"%s/Re-key.txt",infolda);
     loadfile = fopen(loadfilename, "r");
     if (loadfile == NULL) {
         printf("cannot open\n");
         exit(1);
     }
-
     unsigned char str[1024];
-//    while((fgets(str,1024,loadfile))!=NULL){
-//        printf("str: %s\n",str);
-//    }
     fgets(str,1024,loadfile);
     strcpy(key, str);
     fclose(loadfile);
@@ -167,22 +165,32 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
     if(mode == 1) {
         printf("暗号化を行います\n鍵の入力: ");
         scanf("%s",key);
-        make_crypted_AES_key_memo(key, outfolda);
+        output_key_txt(mode, key, outfolda);
+        // TODO: 鍵を暗号化する関数
+    }else if(mode == 2){
+        printf("再暗号化を行います\n");
+        load_key_txt(mode, key, infolda);
+        printf("鍵を読み込みました．key: %s\n", key);
+        // TODO: 鍵を再暗号化する関数
+        printf("鍵を再暗号化しました．key: %s\n", key);
+        output_key_txt(mode, key, outfolda);
     } else {
         printf("データを復号します\n");
-        load_and_decrypto_AES_key(key, infolda); //TODO: 鍵長に注意
+        load_key_txt(mode, key, infolda); //TODO: 鍵長に注意
         printf("鍵を読み込みました．key: %s\n", key);
-        // TODO: 復号する関数
+        // TODO: 鍵を復号する関数
         printf("鍵を復号しました．key: %s\n", key);
     }
-
-    for(dp=readdir(indir); dp!=NULL; dp=readdir(indir)){
-        if(*dp->d_name != '.') {
-            if(strcmp(dp->d_name, "key.txt")) continue;     // key.txtの復号は必要ない
-            sprintf(original,"%s/%s",infolda,dp->d_name);   // オリジナルのファイル名生成
-            sprintf(operated,"%s/%s",outfolda,dp->d_name);  // 処理ファイル名生成
-            printf("%s -> %s\n", original, operated);
-            AES(original, operated, key, iv, mode);
+    if(mode != 2){
+        for(dp=readdir(indir); dp!=NULL; dp=readdir(indir)){
+            if(*dp->d_name != '.') {
+                if(strcmp(dp->d_name, "key.txt")) continue;     // txtの暗号化・復号は必要ない
+                if(strcmp(dp->d_name, "Re-key.txt")) continue;
+                sprintf(original,"%s/%s",infolda,dp->d_name);   // オリジナルのファイル名生成
+                sprintf(operated,"%s/%s",outfolda,dp->d_name);  // 処理ファイル名生成
+                printf("%s -> %s\n", original, operated);
+                AES(original, operated, key, iv, mode);         // ここでファイルの暗号化・復号処理
+            }
         }
     }
     closedir(indir);
@@ -190,11 +198,12 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
 
 int main(void){
     int mode;
+    int decrypt_mode;
     while (1) {
-        printf("暗号化するなら1, 復号するなら0を入力: ");
+        printf("暗号化するなら1, 再暗号化するなら2, 復号するなら0を入力: ");
         scanf("%d", &mode);
-        if(mode == 0 || mode == 1) break;
-        printf("0か1を入力してください。\n");
+        if(mode == 0 || mode == 1 || mode == 2) break;
+        printf("0,1,2のいずれかを入力してください。\n");
     }
 
     char infolda[6]  = "";
@@ -206,11 +215,23 @@ int main(void){
             strcpy(infolda,  "Plain");
             strcpy(outfolda, "Enc");
             break;
+        case 2:
+            strcpy(infolda,  "Enc");
+            strcpy(outfolda, "Enc");
+            break;
         case 0:
+            while (1) {
+                printf("暗号化したものを復号するなら1, 再暗号化したものを復号するなら2を入力: ");
+                scanf("%d", &decrypt_mode);
+                if(decrypt_mode == 1 || decrypt_mode == 2) break;
+                printf("1か2を入力してください。\n");
+            }
+            if(decrypt_mode == 1) mode = 3; else mode = 4;
             strcpy(infolda,  "Enc");
             strcpy(outfolda, "Dec");
             break;
     }
+
     set_crypto_data();
     AES_folda_inputkey(mode, infolda, outfolda, iv);
     return 0;
