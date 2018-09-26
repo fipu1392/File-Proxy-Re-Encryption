@@ -141,9 +141,10 @@ void load_and_decrypto_AES_key(unsigned char *key, unsigned char *infolda) {
     }
 
     unsigned char str[1024];
-    while((fgets(str,1024,loadfile))!=NULL){
-        printf("str: %s\n",str);
-    }
+//    while((fgets(str,1024,loadfile))!=NULL){
+//        printf("str: %s\n",str);
+//    }
+    fgets(str,1024,loadfile);
     strcpy(key, str);
     fclose(loadfile);
 }
@@ -170,14 +171,14 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
     } else {
         printf("データを復号します\n");
         load_and_decrypto_AES_key(key, infolda); //TODO: 鍵長に注意
-        printf("鍵を読み込みました\n");
+        printf("鍵を読み込みました．key: %s\n", key);
         // TODO: 復号する関数
-        printf("鍵を復号しました\n");
-        printf("pass: %s\n", key);
+        printf("鍵を復号しました．key: %s\n", key);
     }
-    // TODO: key.txtの復号は必要ない
+
     for(dp=readdir(indir); dp!=NULL; dp=readdir(indir)){
         if(*dp->d_name != '.') {
+            if(strcmp(dp->d_name, "key.txt")) continue;     // key.txtの復号は必要ない
             sprintf(original,"%s/%s",infolda,dp->d_name);   // オリジナルのファイル名生成
             sprintf(operated,"%s/%s",outfolda,dp->d_name);  // 処理ファイル名生成
             printf("%s -> %s\n", original, operated);
