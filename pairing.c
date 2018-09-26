@@ -1,208 +1,25 @@
 // gcc -o pairing pairing.c -ltepla -lssl -lgmp -lcrypto -std=c99
-
-
-#include <fcntl.h> //open
-#include <unistd.h> //close lseek
+#include <sys/time.h>
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
 
 #include <gmp.h>
 #include <dirent.h>
-#include <sys/time.h>
 #include <tepla/ec.h>
 #include "settings.h"
+//#include "encrypto.h"
+//#include "openssl/ec.h"
+#include "openssl/evp.h"
 
-#define DEBUG 0 // 0: false 1: true
-
-/* --- memo
-    file open各種はoperate_fileでできるのではないか
- */
-
-int i;
-char *ptr;
 EC_PAIRING p;
 EC_POINT P, Q;
 mpz_t limit, a, b, r;
 
 void output_base_variable();
 
-// ファイルを暗号化する関数
-void encryption_file(char *in_file_name, char *out_file_name) {
-/* --- ファイルの操作 --- */
-    /* --- fopen --- */
-    int in_file_descriptor, out_file_descriptor, read_in_file_bytes_count;
-    in_file_descriptor  = open(in_file_name, O_RDONLY); // TODO: ifにまとめる
-    if(in_file_descriptor == -1){
-        printf("%sのopenに失敗しました。\n", in_file_name);
-        exit(-1);
-    }
-    out_file_descriptor = open(out_file_name, O_WRONLY|O_CREAT);
-    if(out_file_descriptor == -1){
-        printf("%sのopenに失敗しました。\n", out_file_name);
-        close(in_file_descriptor);
-        exit(-1);
-    }
-    /* --- file_size --- */
-    unsigned long in_file_size = get_file_size(in_file_name);
-    printf("size = %lu\n", in_file_size);
-
-    /* --- buff --- */
-    unsigned long *in_file_buffer, *out_file_buffer;
-    if((in_file_buffer = malloc(sizeof(unsigned long) * in_file_size)) == NULL){
-        printf("in_file_bufferのメモリ確保に失敗しました。\n");
-        exit(-1);
-    }
-
-    read_in_file_bytes_count = read(in_file_descriptor, in_file_buffer, in_file_size);
-    if(read_in_file_bytes_count == -1){
-        printf("%sのreadに失敗しました。\n", in_file_name);
-        close(in_file_descriptor); close(out_file_descriptor);
-        exit(-1);
-    }
-    if(DEBUG) printf("in_file_size: %ld\n", in_file_size);
-    if(DEBUG) printf("read_in_file_bytes_count: %d\n", read_in_file_bytes_count);
-    
-/* --- Elementの操作 --- */
-    /* -- g = e(P, Q)^r を生成 --- */
-    Element g; element_init(g, p->g3);
-    pairing_map(g, P, Q, p);
-    element_pow(g, g, r);
-
-    /* --- ファイルデータlong型->16進数表記のchar型->Element型に変換 --- */
-    Element element_file[in_file_size/12+1];
-    char element_assign_str[1000] = "";
-    int element_file_index_counter = 0;
-    int counter = 0;
-    for(i=0;i<in_file_size/sizeof(unsigned long)+1;i++) {
-        char tmp[100];
-        convert_long_type_into_hex_string(tmp, in_file_buffer[i]);
-        strcat(element_assign_str, tmp);
-        counter++;
-        if(counter == 12) {
-            element_init(element_file[element_file_index_counter], p->g3);
-            element_set_str(element_file[element_file_index_counter++], element_assign_str);
-            strcpy(element_assign_str, "");
-            counter = 0;
-        } else {
-            strcat(element_assign_str, " ");
-        }
-    }
-    if(counter != 0){ // 残りカスの処理
-        while(1){
-            strcat(element_assign_str, "0");
-            counter++;
-            if(counter!=12) strcat(element_assign_str, " ");
-            else break;
-        }
-        element_init(element_file[element_file_index_counter], p->g3);
-        element_set_str(element_file[element_file_index_counter++], element_assign_str);
-    }
-    printf("element_file_index_counter: %d\n",element_file_index_counter);
-    if(DEBUG) for(i=0;i<element_file_index_counter;i++){
-        printf("element_file[%d]: ",i);
-        element_print(element_file[i]);
-    }
-    
-    /* --- ファイルデータの計算(g*element_file) --- */
-    unsigned long in_file_data_calculation_result_element_total_lenth = 0;
-    Element element_file_key_calc_result[element_file_index_counter];
-    for(i=0;i<element_file_index_counter;i++) {
-        element_init(element_file_key_calc_result[i], p->g3);
-        element_mul(element_file_key_calc_result[i], element_file[i], g);
-        in_file_data_calculation_result_element_total_lenth += element_get_str_length(element_file_key_calc_result[i]);
-    }
-
-    if((out_file_buffer = malloc(sizeof(unsigned long) * in_file_data_calculation_result_element_total_lenth)) == NULL) { // 今の所使ってない
-        printf("out_file_bufferのメモリ確保に失敗しました。\n");
-        exit(-1);
-    }
-    printf("in_file_data_calculation_result_element_total_lenth: %d\n",in_file_data_calculation_result_element_total_lenth);
-    if(DEBUG) for(i=0;i<element_file_index_counter;i++){
-        printf("element_file_key_calc_result[%d]: ",i);
-        element_print(element_file_key_calc_result[i]);
-    }
-
-//    memset(out_file_buffer, 0, in_file_data_calculation_result_element_total_lenth);
-//    memcpy(out_file_buffer, element_file_key_calc_result, 301236000);
-    write(out_file_descriptor, element_file_key_calc_result, in_file_data_calculation_result_element_total_lenth);
-
-    /* --- 後片付け --- */
-    close(in_file_descriptor);
-    close(out_file_descriptor);
-    frees(in_file_buffer, out_file_buffer, NULL);
-    for(i=0;i<element_file_index_counter;i++){
-        element_clear(element_file[i]);
-        element_clear(element_file_key_calc_result[i]);
-    }
-    element_clear(g);
-}
-
-// ファイルを再暗号化する関数
-void re_encryption_file(char *in_file_name, char *out_file_name) {
-    
-}
-
-// ファイルを復号する
-void decode_encryption_file(char *in_file_name, char *out_file_name) {
-    
-}
-
-// 再暗号化されたファイルを復号する
-void decode_re_encryption_file(char *in_file_name, char *out_file_name) {
-    
-}
-
-// ファイル操作の指定をする関数
-void operate_file(int mode, char *in_file_name, char *out_file_name) {
-
-
-    switch (mode) {
-        case 1:
-            encryption_file(in_file_name, out_file_name);
-            break;
-        case 2:
-            re_encryption_file(in_file_name, out_file_name);
-            break;
-        case 4:
-            decode_encryption_file(in_file_name, out_file_name);
-            break;
-        case 5:
-            decode_re_encryption_file(in_file_name, out_file_name);
-            break;
-    }
-}
-
-// フォルダの中のファイルパスを取り出す関数
-void open_folder(int mode, char *in_folder, char *out_folder) {
-    DIR *dir;
-    struct dirent *dp;
-    char original_file_path[100];
-    char operated_file_path[100];
-
-    if((dir = opendir(in_folder)) == NULL) {
-        printf("フォルダ %s を開けませんでした。\n", in_folder);
-        exit(-1);
-    }
-    if((opendir(out_folder)) == NULL) {
-        printf("フォルダ %s を開けませんでした。\n", out_folder);
-        exit(-1);
-    }
-
-    if(mode == 1) printf("暗号化を行います。\n");
-    if(mode == 2) printf("再暗号化を行います。\n");
-    if(mode == 4 || mode == 5) printf("復号を行います。\n");
-
-    for(dp=readdir(dir); dp!=NULL; dp=readdir(dir)){
-        if(*dp->d_name != '.') {
-            sprintf(original_file_path,"%s/%s",in_folder,dp->d_name);   // オリジナルのファイル名生成
-            sprintf(operated_file_path,"%s/%s",out_folder,dp->d_name);  // 処理ファイル名生成
-            printf("%s -> %s\n", original_file_path, operated_file_path);
-            operate_file(mode, original_file_path, operated_file_path);
-        }
-    }
-    closedir(dir);
-}
-
-int main(void) {
-/* --- Setting --- */
+// ペアリングに関する値をセットする関数
+void set_crypto_data(){
     /* --- ペアリング初期化 --- */
     pairing_init(p, "ECBN254a");
     /* --- 上限値を設定 --- */
@@ -219,65 +36,192 @@ int main(void) {
     mpz_init(a); mpz_init(b); mpz_init(r);
     mpz_set_str(a, a_char, 10); mpz_set_str(b, b_char, 10); mpz_set_str(r, r_char, 10);
     /* --- 出力テスト --- */
-    if(DEBUG) output_base_variable();
+//  output_base_variable();
+}
 
-/* --- メイン出力 --- */
-    int mode;
-    while (1) {
-        printf("暗号化するなら1, 再暗号化するなら2, 復号するなら3を入力: ");
-        scanf("%d", &mode);
-        if(mode == 1 || mode == 2 || mode == 3) break;
-        printf("1, 2, 3のいずれかを入力してください。\n");
+// ファイルのサイズを計測する関数
+unsigned long GetFileSize(char *fname){
+    long size;
+    FILE *fgetfilesize;
+    if((fgetfilesize = fopen(fname, "rb")) == NULL ){
+        printf("ファイル %s が開けませんでした。\n", fname);
+        return -1;
+    }
+    fseek(fgetfilesize, 0, SEEK_END);
+    size = ftell(fgetfilesize);
+    fclose(fgetfilesize);
+    return size;
+}
+
+// AESを実際に行う関数
+int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, int do_encrypt){
+    // do_encrypt: 1:暗号化 / 0:復号
+    // Allow enough space in output buffer for additional block
+    // Bogus key and IV: we'd normally set these from another source.
+
+    // unsigned char inbuf[1024], outbuf[1024 + EVP_MAX_BLOCK_LENGTH];
+    unsigned char *inbuf, *outbuf;
+    int inlen, outlen;
+
+    FILE *fin, *fout;
+    fin  = fopen(in_fname, "rb");
+    fout = fopen(out_fname, "wb");
+
+    //バッファサイズの設定
+    unsigned long in_size;
+    in_size = GetFileSize(in_fname);
+    printf("size = %lu\n", in_size);
+
+    if((inbuf = malloc(sizeof(char)*in_size)) == NULL){
+        printf("inbufのメモリが確保できませんでした。\n");
+        exit(-1);
+    }
+    if((outbuf = malloc(sizeof(char)*(int)(in_size+EVP_MAX_BLOCK_LENGTH))) == NULL) {
+        printf("outbufのメモリが確保できませんでした。\n");
+        exit(-1);
     }
 
-    char in_folder[6]  = "";
-    char out_folder[6] = "";
+    EVP_CIPHER_CTX ctx;
+    EVP_CIPHER_CTX_init(&ctx);
+    EVP_CipherInit_ex(&ctx, EVP_aes_128_cbc(), NULL, NULL, NULL, do_encrypt);
+    OPENSSL_assert(EVP_CIPHER_CTX_key_length(&ctx) == 16);
+    OPENSSL_assert(EVP_CIPHER_CTX_iv_length(&ctx) == 16);
+
+    //AES128の鍵と初期ベクトルを設定
+    EVP_CipherInit_ex(&ctx, NULL, NULL, key, iv, do_encrypt);
+    for(;;){
+        // ファイルポインタfinからバッファinbufにサイズ1のデータin_size個を読み込む
+        // inlenには読み込んだ個数を返却
+        inlen = fread(inbuf, 1, in_size, fin);
+        if(inlen <= 0) break;
+        if(!EVP_CipherUpdate(&ctx, outbuf, &outlen, inbuf, inlen)){ // Error
+            EVP_CIPHER_CTX_cleanup(&ctx);
+            fcloses(fin, fout, NULL);
+            frees(inbuf, outbuf, NULL);
+            return 0;
+        }
+        fwrite(outbuf, 1, outlen, fout);
+    }
+    if(!EVP_CipherFinal_ex(&ctx, outbuf, &outlen)){ // Error
+        EVP_CIPHER_CTX_cleanup(&ctx);
+        fcloses(fin, fout, NULL);
+        frees(inbuf, outbuf, NULL);
+        return 0;
+    }
+    fwrite(outbuf, 1, outlen, fout);
+    EVP_CIPHER_CTX_cleanup(&ctx);
+    fcloses(fin, fout, NULL);
+    frees(inbuf, outbuf, NULL);
+    return 1;
+}
+
+// 暗号化時に鍵をメモに出力する関数
+void make_crypted_AES_key_memo(unsigned char *key, unsigned char *outfolda) {
+    FILE *outfile;
+    char openfilename[1000];
+    sprintf(openfilename,"%s/key.txt",outfolda);
+    outfile = fopen(openfilename, "w+");
+    if (outfile == NULL) {
+        printf("cannot open\n");
+        exit(1);
+    }
+    fprintf(outfile, "%s", key);
+    fclose(outfile);
+}
+
+// 復号時に鍵を読み込む関数　(今は復号の関数もある deprecated)
+void load_and_decrypto_AES_key(unsigned char *key, unsigned char *infolda) {
+    FILE *loadfile;
+    char loadfilename[1000];
+    sprintf(loadfilename,"%s/key.txt",infolda);
+    loadfile = fopen(loadfilename, "r");
+    if (loadfile == NULL) {
+        printf("cannot open\n");
+        exit(1);
+    }
+
+    unsigned char str[1024];
+    while((fgets(str,1024,loadfile))!=NULL){
+        printf("str: %s\n",str);
+    }
+    strcpy(key, str);
+    fclose(loadfile);
+}
+
+void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *iv){
+    DIR *indir;
+    struct dirent *dp;
+    char original[100];
+    char operated[100];
+    unsigned char key[128];
+
+    if((indir = opendir(infolda)) == NULL) {
+        printf("フォルダ %s が開けませんでした。\n", infolda);
+        exit(-1);
+    } else if((opendir(outfolda)) == NULL) {
+        printf("フォルダ %s が開けませんでした。\n", outfolda);
+        exit(-1);
+    }
+
+    if(mode == 1) {
+        printf("暗号化を行います\n鍵の入力: ");
+        scanf("%s",key);
+        make_crypted_AES_key_memo(key, outfolda);
+    } else {
+        printf("データを復号します\n");
+        load_and_decrypto_AES_key(key, infolda); //TODO: 鍵長に注意
+        printf("鍵を読み込みました\n");
+        // TODO: 復号する関数
+        printf("鍵を復号しました\n");
+        printf("pass: %s\n", key);
+    }
+    // TODO: key.txtの復号は必要ない
+    for(dp=readdir(indir); dp!=NULL; dp=readdir(indir)){
+        if(*dp->d_name != '.') {
+            sprintf(original,"%s/%s",infolda,dp->d_name);   // オリジナルのファイル名生成
+            sprintf(operated,"%s/%s",outfolda,dp->d_name);  // 処理ファイル名生成
+            printf("%s -> %s\n", original, operated);
+            AES(original, operated, key, iv, mode);
+        }
+    }
+    closedir(indir);
+}
+
+int main(void){
+    int mode;
+    while (1) {
+        printf("暗号化するなら1, 復号するなら0を入力: ");
+        scanf("%d", &mode);
+        if(mode == 0 || mode == 1) break;
+        printf("0か1を入力してください。\n");
+    }
+
+    char infolda[6]  = "";
+    char outfolda[6] = "";
+    unsigned char iv[] ="0123456789abcdef";
 
     switch (mode) {
         case 1:
-            strcpy(in_folder,  "Plain");
-            strcpy(out_folder, "Enc");
+            strcpy(infolda,  "Plain");
+            strcpy(outfolda, "Enc");
             break;
-        case 2:
-            strcpy(in_folder,  "Enc");
-            strcpy(out_folder, "ReEnc");
-            break;
-        case 3:
-            while(1) {
-                printf("再暗号化していないものを復号するなら1, 再暗号化したものを復号するなら2を入力: ");
-                scanf("%d", &mode);
-                if(mode == 1 || mode == 2) break;
-                printf("1か2を入力してください。\n");
-            }
-            if(mode == 1){
-                mode = 4;
-                strcpy(in_folder,  "Enc");
-                strcpy(out_folder, "Dec");
-            } else {
-                mode = 5;
-                strcpy(in_folder,  "ReEnc");
-                strcpy(out_folder, "Dec");
-            }
+        case 0:
+            strcpy(infolda,  "Enc");
+            strcpy(outfolda, "Dec");
             break;
     }
-    open_folder(mode, in_folder, out_folder);
-
-/* --- 後片付け --- */
-    mpz_clears(limit, a, b, r, NULL);
-    point_clear(P);
-    point_clear(Q);
-    pairing_clear(p);
-    print_green_color("--- 正常終了 ---\n");
+    set_crypto_data();
+    AES_folda_inputkey(mode, infolda, outfolda, iv);
     return 0;
 }
 
 void output_base_variable() {
+    print_green_color("---------------- CRYPTO DATA ----------------\n");
     print_green_color("limit : "); gmp_printf ("%Zd\n", limit);
     print_green_color("P     : "); point_print(P);
     print_green_color("Q     : "); point_print(Q);
     print_green_color("a     : "); gmp_printf ("%Zd\n", a);
     print_green_color("b     : "); gmp_printf ("%Zd\n", b);
     print_green_color("r     : "); gmp_printf ("%Zd\n", r);
+    print_green_color("---------------------------------------------\n");
 }
-
-
