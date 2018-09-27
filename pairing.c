@@ -12,6 +12,9 @@
 //#include "openssl/ec.h"
 #include "openssl/evp.h"
 
+#define MESSAGE_SIZE 10000
+#define CODE_SIZE MESSAGE_SIZE/sizeof(long)
+
 EC_PAIRING p;
 EC_POINT P, Q;
 mpz_t limit, a, b, r;
@@ -147,12 +150,43 @@ void load_key_txt(int mode, unsigned char *key, unsigned char *infolda) {
     fclose(loadfile);
 }
 
+void encipher_key(unsigned char *msg) {
+    int i, msg_len = strlen(msg), roop_num = msg_len/sizeof(long) + 1;
+    /* -- g = e(P, Q)^r を生成 --- */
+    Element g; element_init(g, p->g3);
+    pairing_map(g, P, Q, p); element_pow(g, g, r);
+    /* --- 平文をlong型にした後、16進数表記のchar型に変換 --- */
+    unsigned long enc_msg_long[CODE_SIZE];
+    memset(enc_msg_long,0,sizeof(enc_msg_long)); memcpy(enc_msg_long,msg,msg_len);
+    /* --- 16進数表記のchar型平文をElement型に変換 --- */
+    Element element_msg; element_init(element_msg, p->g3);
+    char element_assign_str[1000] = "";
+    for(i=0;i<12;i++){
+        if(roop_num>i) {
+            char tmp[100];
+            convert_long_type_into_hex_string(tmp, enc_msg_long[i]);
+            strcat(element_assign_str, tmp);
+        } else strcat(element_assign_str, "0");
+        if(i!=11) strcat(element_assign_str, " ");
+    }
+    element_set_str(element_msg, element_assign_str);
+    /* --- 文字列と鍵を掛け算 --- */
+    Element element_msg_key_calc_result;
+    element_init(element_msg_key_calc_result, p->g3);
+    element_mul(element_msg_key_calc_result, element_msg, g);
+    /* --- 計算結果をmsgに挿入 --- */
+    element_get_str(msg, element_msg_key_calc_result);
+    /* --- 領域解放 --- */
+    element_clear(g); element_clear(element_msg);
+    element_clear(element_msg_key_calc_result);
+}
+
 void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *iv){
     DIR *indir;
     struct dirent *dp;
     char original[100];
     char operated[100];
-    unsigned char key[128];
+    unsigned char key[1024];
 
     if((indir = opendir(infolda)) == NULL) {
         printf("フォルダ %s が開けませんでした。\n", infolda);
@@ -163,10 +197,10 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
     }
 
     if(mode == 1) {
-        printf("暗号化を行います\n鍵の入力: ");
-        scanf("%s",key);
-        output_key_txt(mode, key, outfolda);
-        // TODO: 鍵を暗号化する関数
+        while(1){
+            printf("暗号化を行います\n鍵の入力(70文字以内): "); scanf(" %s",key);
+            if(strlen(key) <= 70) break; else printf("70文字以内で入力してください．\n");
+        }
     }else if(mode == 2){
         printf("再暗号化を行います\n");
         load_key_txt(mode, key, infolda);
@@ -192,6 +226,10 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
                 AES(original, operated, key, iv, mode);         // ここでファイルの暗号化・復号処理
             }
         }
+    }
+    if(mode == 1) {
+        encipher_key(key);
+        output_key_txt(mode, key, outfolda);
     }
     closedir(indir);
 }
