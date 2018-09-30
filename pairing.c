@@ -8,8 +8,6 @@
 #include <dirent.h>
 #include <tepla/ec.h>
 #include "settings.h"
-//#include "encrypto.h"
-//#include "openssl/ec.h"
 #include "openssl/evp.h"
 
 #define MESSAGE_SIZE 10000
@@ -45,14 +43,13 @@ void set_crypto_data(){
 
 // ファイルのサイズを計測する関数
 unsigned long GetFileSize(char *fname){
-    long size;
     FILE *fgetfilesize;
     if((fgetfilesize = fopen(fname, "rb")) == NULL ){
         printf("ファイル %s が開けませんでした。\n", fname);
         return -1;
     }
     fseek(fgetfilesize, 0, SEEK_END);
-    size = ftell(fgetfilesize);
+    long size = ftell(fgetfilesize);
     fclose(fgetfilesize);
     return size;
 }
@@ -125,8 +122,7 @@ int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, 
 void output_key_txt(int mode, unsigned char *key, unsigned char *outfolda) {
     FILE *outfile;
     char openfilename[1000];
-    if(mode == 1) sprintf(openfilename,"%s/key.txt",outfolda);
-    if(mode == 2) sprintf(openfilename,"%s/Re-key.txt",outfolda);
+    sprintf(openfilename,"%s/key.txt",outfolda);
     outfile = fopen(openfilename, "w+");
     if (outfile == NULL) {
         printf("鍵を書き出す時にkey.txtを開けませんでした．\n");
@@ -265,8 +261,7 @@ void calc_result_str_convert_to_key_origin(char *key, char * calc_result_str) {
     /* --- strをスペースで分割してlong型に変換 --- */
     int i=1;
     unsigned long dec_msg_long[12];
-    char dec_msg_str[12][128], *ptr;
-    ptr = strtok(calc_result_str, " ");
+    char dec_msg_str[12][128], *ptr = strtok(calc_result_str, " ");
     strcpy(dec_msg_str[0], ptr);
     while(ptr != NULL) {
         ptr = strtok(NULL, " ");
@@ -278,7 +273,7 @@ void calc_result_str_convert_to_key_origin(char *key, char * calc_result_str) {
     /* --- decode --- */
     char msg_decode[CODE_SIZE];
     memset(msg_decode,0,sizeof(msg_decode));
-    memcpy(msg_decode,dec_msg_long,70); // TODO: 70でいいの？
+    memcpy(msg_decode,dec_msg_long,sizeof(char)*70); // TODO: 70でいいの？
     print_green_color("plain key = "); printf("%s\n", msg_decode);
     strcpy(key, msg_decode);
 }
