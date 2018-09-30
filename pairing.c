@@ -20,6 +20,7 @@ EC_POINT P, Q;
 mpz_t limit, a, b, r;
 
 void output_base_variable();
+void calc_result_str_convert_to_key_origin(char *key, char * calc_result_str);
 
 // ペアリングに関する値をセットする関数
 void set_crypto_data(){
@@ -209,11 +210,64 @@ void decode_key(char *key) {
         printf("Memory could not be secured.\n"); exit(1);
     }
     element_get_str(calc_result_str, calc_result);
+    /* --- 変換 --- */
+    calc_result_str_convert_to_key_origin(key, calc_result_str);
+    /* --- 領域解放 --- */
+    mpz_clears(a_one,NULL);
+    point_clear(raQ);point_clear(a1P);
+    element_clear(g2);element_clear(g2_inv);element_clear(mgr);
+    element_clear(calc_result);
+    free(calc_result_str);
+}
+
+// 再暗号化の復号を行う関数
+void decode_re_key(char *key) {
+    int i;
+    /* --- r(aQ) を計算 --- */
+    EC_POINT raQ; point_init(raQ, p->g2);
+    point_mul(raQ, a, Q); point_mul(raQ, r, raQ);
+    /* --- 1/aを計算 --- */
+    mpz_t a_one; mpz_init(a_one); mpz_invert(a_one, a, limit);
+    /* --- (1/a)bP を計算(再暗号化鍵) --- */
+    EC_POINT reEncKey; point_init(reEncKey, p->g1);
+    point_mul(reEncKey, b, P); point_mul(reEncKey, a_one, reEncKey);
+    /* --- raQをg^(rb)に変換 --- */
+    Element grb; element_init(grb, p->g3); pairing_map(grb, reEncKey, raQ, p);
+    /* --- 1/bを計算 --- */
+    mpz_t b_one; mpz_init(b_one); mpz_invert(b_one, b, limit);
+    /* --- (g^(rb))^(1/b) = g^r --- */
+    Element g3; element_init(g3, p->g3); element_pow(g3, grb, b_one);
+    /* --- g3の逆元を計算 --- */
+    Element g3_inv; element_init(g3_inv, p->g3); element_inv(g3_inv, g3);
+    /* --- 鍵をElementにセットする --- */
+    Element mgr; element_init(mgr, p->g3); element_set_str(mgr, key);
+    /* --- 割り算する(mg^r/g^r) --- */
+    Element calc_result; element_init(calc_result, p->g3);
+    element_mul(calc_result, mgr, g3_inv);
+    /* --- Elementを16進数文字列に変換 --- */
+    int calc_result_str_size = element_get_str_length(calc_result);
+    char *calc_result_str;
+    if((calc_result_str = (char *)malloc(calc_result_str_size+1)) == NULL) {
+        printf("Memory could not be secured.\n"); exit(1);
+    }
+    element_get_str(calc_result_str, calc_result);
+    /* --- 変換 --- */
+    calc_result_str_convert_to_key_origin(key, calc_result_str);
+    /* --- 領域解放 --- */
+    mpz_clears(a_one,b_one,NULL);
+    point_clear(raQ);point_clear(reEncKey);
+    element_clear(grb);element_clear(g3);element_clear(g3_inv);element_clear(mgr);
+    element_clear(calc_result);
+    free(calc_result_str);
+}
+
+void calc_result_str_convert_to_key_origin(char *key, char * calc_result_str) {
     /* --- strをスペースで分割してlong型に変換 --- */
+    int i=1;
     unsigned long dec_msg_long[12];
     char dec_msg_str[12][128], *ptr;
     ptr = strtok(calc_result_str, " ");
-    strcpy(dec_msg_str[0], ptr); i=1;
+    strcpy(dec_msg_str[0], ptr);
     while(ptr != NULL) {
         ptr = strtok(NULL, " ");
         if(ptr != NULL) strcpy(dec_msg_str[i], ptr);
@@ -225,13 +279,8 @@ void decode_key(char *key) {
     char msg_decode[CODE_SIZE];
     memset(msg_decode,0,sizeof(msg_decode));
     memcpy(msg_decode,dec_msg_long,70); // TODO: 70でいいの？
-    print_green_color("message = "); printf("%s\n", msg_decode);
+    print_green_color("plain key = "); printf("%s\n", msg_decode);
     strcpy(key, msg_decode);
-}
-
-
-void decode_re_key(char *key) {
-
 }
 
 void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *iv){
@@ -255,12 +304,8 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
             if(strlen(key) <= 70) break; else printf("70文字以内で入力してください．\n");
         }
     }else if(mode == 2){
-        printf("再暗号化を行います\n");
-        load_key_txt(mode, key, infolda);
-        printf("鍵を読み込みました．key: %s\n", key);
-        // TODO: 鍵を再暗号化する関数 -> 意味がない？
-        printf("鍵を再暗号化しました．key: %s\n", key);
-        output_key_txt(mode, key, outfolda);
+//        printf("再暗号化を行います\n");
+        printf("再暗号化にデータの変換は必要ありません．\n");
     } else {
         printf("データを復号します\n");
         load_key_txt(mode, key, infolda);
