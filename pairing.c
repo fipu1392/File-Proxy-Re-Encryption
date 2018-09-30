@@ -59,6 +59,8 @@ unsigned long GetFileSize(char *fname){
 // AESを実際に行う関数
 int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, int do_encrypt){
     // do_encrypt: 1:暗号化 / 0:復号
+    if(do_encrypt == 3 || do_encrypt == 4) do_encrypt = 0;
+
     // Allow enough space in output buffer for additional block
     // Bogus key and IV: we'd normally set these from another source.
 
@@ -126,7 +128,7 @@ void output_key_txt(int mode, unsigned char *key, unsigned char *outfolda) {
     if(mode == 2) sprintf(openfilename,"%s/Re-key.txt",outfolda);
     outfile = fopen(openfilename, "w+");
     if (outfile == NULL) {
-        printf("cannot open\n");
+        printf("鍵を書き出す時にkey.txtを開けませんでした．\n");
         exit(1);
     }
     fprintf(outfile, "%s", key);
@@ -137,11 +139,10 @@ void output_key_txt(int mode, unsigned char *key, unsigned char *outfolda) {
 void load_key_txt(int mode, unsigned char *key, unsigned char *infolda) {
     FILE *loadfile;
     char loadfilename[1000];
-    if(mode == 2 || mode == 3) sprintf(loadfilename,"%s/key.txt",infolda);
-    if(mode == 4) sprintf(loadfilename,"%s/Re-key.txt",infolda);
+    sprintf(loadfilename,"%s/key.txt",infolda);
     loadfile = fopen(loadfilename, "r");
     if (loadfile == NULL) {
-        printf("cannot open\n");
+        printf("鍵を読み込む時にkey.txtを開けませんでした．\n");
         exit(1);
     }
     unsigned char str[1024];
@@ -150,6 +151,7 @@ void load_key_txt(int mode, unsigned char *key, unsigned char *infolda) {
     fclose(loadfile);
 }
 
+// 鍵を暗号化する関数
 void encipher_key(unsigned char *msg) {
     int i, msg_len = strlen(msg), roop_num = msg_len/sizeof(long) + 1;
     /* -- g = e(P, Q)^r を生成 --- */
@@ -181,6 +183,57 @@ void encipher_key(unsigned char *msg) {
     element_clear(element_msg_key_calc_result);
 }
 
+// 通常の復号を行う関数
+void decode_key(char *key) {
+    int i;
+    /* --- r(aQ) を計算 --- */
+    EC_POINT raQ; point_init(raQ, p->g2);
+    point_mul(raQ, a, Q); point_mul(raQ, r, raQ);
+    /* --- 1/aを計算 --- */
+    mpz_t a_one; mpz_init(a_one); mpz_invert(a_one, a, limit);
+    /* --- (1/a)Pを計算 --- */
+    EC_POINT a1P; point_init(a1P, p->g1); point_mul(a1P, a_one, P);
+    /* --- g2 = e((1/a)P, raQ) = e(P, Q)^r --- */
+    Element g2; element_init(g2, p->g3); pairing_map(g2, a1P, raQ, p);
+    /* --- g2の逆元を計算 --- */
+    Element g2_inv; element_init(g2_inv, p->g3); element_inv(g2_inv, g2);
+    /* --- 鍵をElementにセットする --- */
+    Element mgr; element_init(mgr, p->g3); element_set_str(mgr, key);
+    /* --- 割り算する(mg^r/g^r) --- */
+    Element calc_result; element_init(calc_result, p->g3);
+    element_mul(calc_result, mgr, g2_inv);
+    /* --- Elementを16進数文字列に変換 --- */
+    int calc_result_str_size = element_get_str_length(calc_result);
+    char *calc_result_str;
+    if((calc_result_str = (char *)malloc(calc_result_str_size+1)) == NULL) {
+        printf("Memory could not be secured.\n"); exit(1);
+    }
+    element_get_str(calc_result_str, calc_result);
+    /* --- strをスペースで分割してlong型に変換 --- */
+    unsigned long dec_msg_long[12];
+    char dec_msg_str[12][128], *ptr;
+    ptr = strtok(calc_result_str, " ");
+    strcpy(dec_msg_str[0], ptr); i=1;
+    while(ptr != NULL) {
+        ptr = strtok(NULL, " ");
+        if(ptr != NULL) strcpy(dec_msg_str[i], ptr);
+        i++;
+    }
+    for(i=0;i<12;i++) if(strcmp(dec_msg_str[i], "0")!=0)
+        dec_msg_long[i] = convert_hex_string_into_long_type(dec_msg_str[i]);
+    /* --- decode --- */
+    char msg_decode[CODE_SIZE];
+    memset(msg_decode,0,sizeof(msg_decode));
+    memcpy(msg_decode,dec_msg_long,70); // TODO: 70でいいの？
+    print_green_color("message = "); printf("%s\n", msg_decode);
+    strcpy(key, msg_decode);
+}
+
+
+void decode_re_key(char *key) {
+
+}
+
 void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *iv){
     DIR *indir;
     struct dirent *dp;
@@ -205,25 +258,24 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
         printf("再暗号化を行います\n");
         load_key_txt(mode, key, infolda);
         printf("鍵を読み込みました．key: %s\n", key);
-        // TODO: 鍵を再暗号化する関数
+        // TODO: 鍵を再暗号化する関数 -> 意味がない？
         printf("鍵を再暗号化しました．key: %s\n", key);
         output_key_txt(mode, key, outfolda);
     } else {
         printf("データを復号します\n");
-        load_key_txt(mode, key, infolda); //TODO: 鍵長に注意
-        printf("鍵を読み込みました．key: %s\n", key);
-        // TODO: 鍵を復号する関数
-        printf("鍵を復号しました．key: %s\n", key);
+        load_key_txt(mode, key, infolda);
+        if(mode == 3) decode_key(key);
+        if(mode == 4) decode_re_key(key);
     }
     if(mode != 2){
         for(dp=readdir(indir); dp!=NULL; dp=readdir(indir)){
             if(*dp->d_name != '.') {
-                if(strcmp(dp->d_name, "key.txt")) continue;     // txtの暗号化・復号は必要ない
-                if(strcmp(dp->d_name, "Re-key.txt")) continue;
-                sprintf(original,"%s/%s",infolda,dp->d_name);   // オリジナルのファイル名生成
-                sprintf(operated,"%s/%s",outfolda,dp->d_name);  // 処理ファイル名生成
-                printf("%s -> %s\n", original, operated);
-                AES(original, operated, key, iv, mode);         // ここでファイルの暗号化・復号処理
+                if(strcmp(dp->d_name, "key.txt") != 0) {     // txtの暗号化・復号は必要ない
+                    sprintf(original,"%s/%s",infolda,dp->d_name);   // オリジナルのファイル名生成
+                    sprintf(operated,"%s/%s",outfolda,dp->d_name);  // 処理ファイル名生成
+                    printf("%s -> %s\n", original, operated);
+                    AES(original, operated, key, iv, mode);         // ここでファイルの暗号化・復号処理
+                }
             }
         }
     }
