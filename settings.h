@@ -51,9 +51,10 @@ unsigned long get_file_size(char *fname){
 // fcloseの複数ファイル指定対応版
 // 引数の最後は必ずNULLにすること
 int fcloses(FILE *fps, ...) {
+    FILE *fp;
     va_list ap;
     va_start(ap, fps);
-    for (FILE *fp = fps; fp != NULL; fp = va_arg(ap, FILE *)) {
+    for (fp = fps; fp != NULL; fp = va_arg(ap, FILE *)) {
         if (fclose(fp) != 0) {
             printf("fclose時にエラーが発生しました。");
             va_end(ap);
@@ -67,9 +68,10 @@ int fcloses(FILE *fps, ...) {
 // freeの複数ポインタ指定対応版
 // 引数の最後は必ずNULLにすること
 int frees(void *ptrs, ...) {
+    FILE *ptr;
     va_list ap;
     va_start(ap, ptrs);
-    for (FILE *ptr = ptrs; ptr != NULL; ptr = va_arg(ap, void *)) free(ptr);
+    for (ptr = ptrs; ptr != NULL; ptr = va_arg(ap, void *)) free(ptr);
     va_end(ap);
     return 0;
 }

@@ -1,8 +1,8 @@
 // gcc -o pairing pairing.c -ltepla -lssl -lgmp -lcrypto -std=c99
 #include <sys/time.h>
-#include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include <gmp.h>
 #include <dirent.h>
@@ -295,8 +295,9 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
 
     if(mode == 1) {
         while(1){
-            printf("暗号化を行います\n鍵の入力(70文字以内): "); scanf(" %s",key);
-            if(strlen(key) <= 70) break; else printf("70文字以内で入力してください．\n");
+            printf("暗号化を行います\n鍵の入力(15-70文字): "); scanf("%s",key);
+            if(15<=strlen(key) && strlen(key)<=70) break;
+            else printf("15文字以上70文字以内で入力してください．\n");
         }
     }else if(mode == 2){
 //        printf("再暗号化を行います\n");
