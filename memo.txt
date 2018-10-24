@@ -31,3 +31,7 @@ in_file_data_calculation_result_element_total_lenth: 3012360
             if(i!=1) strcat(element_assign_str, " ");
         }
     }
+
+
+
+bP=point: [a638aff1ebf43949ae6175f9167a2ab3aca1a5b0979fd7998cdf740bcd01777,746556fc7b410f10d89856018b87a9b125f283b48c90c0bf3f0e46f7aa0586]
