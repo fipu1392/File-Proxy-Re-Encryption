@@ -16,30 +16,11 @@
 EC_PAIRING p;
 EC_POINT P, Q;
 mpz_t limit, a, b, r;
+char str[1000];
 
-void output_base_variable();
+void set_crypto_data();
+char *get_str_data(char *user, char *data);
 void calc_result_str_convert_to_key_origin(char *key, char * calc_result_str);
-
-// ペアリングに関する値をセットする関数
-void set_crypto_data(){
-    /* --- ペアリング初期化 --- */
-    pairing_init(p, "ECBN254a");
-    /* --- 上限値を設定 --- */
-    char limit_char[78]; get_str_data(limit_char, "limit");
-    mpz_init(limit); mpz_set_str(limit, limit_char, 10);
-    /* --- 点P, Qを設定 --- */
-    char P_char[132]; get_str_data(P_char, "P");
-    point_init(P, p->g1); point_set_str(P, P_char);
-    char Q_char[261]; get_str_data(Q_char, "Q");
-    point_init(Q, p->g2); point_set_str(Q, Q_char);
-    /* --- 秘密鍵a,bと乱数rを設定 --- */
-    char a_char[78], b_char[78];
-    get_str_data(a_char, "a"); get_str_data(b_char, "b");
-    mpz_init(a); mpz_init(b); mpz_init(r);
-    mpz_set_str(a, a_char, 10); mpz_set_str(b, b_char, 10); create_mpz_t_random(r, limit);
-    /* --- 出力テスト --- */
-//  output_base_variable();
-}
 
 // ファイルのサイズを計測する関数
 unsigned long GetFileSize(char *fname){
@@ -133,13 +114,13 @@ void output_key_txt(char *output_name, unsigned char *outfolda, unsigned char *k
 }
 
 // 鍵を読み込む関数
-void load_key_txt(char *output_name, unsigned char *infolda, unsigned char *key){
+void load_key_txt(char *load_name, unsigned char *infolda, unsigned char *key){
     FILE *loadfile;
     char loadfilename[1000];
-    sprintf(loadfilename,"%s/%s.txt",infolda, output_name);
+    sprintf(loadfilename,"%s/%s.txt",infolda, load_name);
     loadfile = fopen(loadfilename, "r");
     if (loadfile == NULL) {
-        printf("鍵を読み込む時に%s.txtを開けませんでした．\n", output_name);
+        printf("鍵を読み込む時に%s.txtを開けませんでした．\n", load_name);
         exit(1);
     }
     unsigned char str[1024]; fgets(str,1024,loadfile); strcpy(key, str);
@@ -181,13 +162,14 @@ void encipher_key(unsigned char *msg) {
 // 鍵を再暗号化する関数
 void re_encipher_key(unsigned char *raQ_char, char *keyC) {
 /* --- r(aQ) をセット --- */
-    EC_POINT raQ; point_init(raQ, p->g2);
-    point_set_str(raQ, raQ_char);
+    EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, raQ_char);
 /* --- 再暗号化鍵((1/a)bP)を作成 --- */
+    /* --- aをセット --- */
+    mpz_set_str(a, get_str_data("A", "a"), 10);
     /* --- 1/aを計算 --- */
     mpz_t a_one; mpz_init(a_one); mpz_invert(a_one, a, limit);
-    /* --- bPを計算 --- */
-    EC_POINT bP; point_init(bP, p->g1); point_mul(bP, b, P);
+    /* --- bPをセット --- */
+    EC_POINT bP; point_init(bP, p->g1); point_set_str(bP, get_str_data("A", "bP"));
     /* --- 再暗号化鍵の生成 --- */
     EC_POINT re_Key; point_init(re_Key, p->g1);
     point_mul(re_Key, a_one, bP);
@@ -210,6 +192,8 @@ void decode_key(char *key, const char *raQ_char) {
     /* --- r(aQ) をセット --- */
     EC_POINT raQ; point_init(raQ, p->g2);
     point_set_str(raQ, raQ_char);
+    /* --- aをセット --- */
+    mpz_set_str(a, get_str_data("A", "a"), 10);
     /* --- 1/aを計算 --- */
     mpz_t a_one; mpz_init(a_one); mpz_invert(a_one, a, limit);
     /* --- (1/a)Pを計算 --- */
@@ -244,6 +228,8 @@ void decode_key(char *key, const char *raQ_char) {
 void decode_re_key(char *key, char *grb_char) {
     /* --- g^(rb)をセット --- */
     Element grb; element_init(grb, p->g3); element_set_str(grb, grb_char);
+    /* --- bをセット --- */
+    mpz_set_str(b, get_str_data("B", "b"), 10);
     /* --- 1/bを計算 --- */
     mpz_t b_one; mpz_init(b_one); mpz_invert(b_one, b, limit);
     /* --- (g^(rb))^(1/b) = g^r --- */
@@ -265,10 +251,8 @@ void decode_re_key(char *key, char *grb_char) {
     /* --- 変換 --- */
     calc_result_str_convert_to_key_origin(key, calc_result_str);
     /* --- 領域解放 --- */
-    mpz_clear(b_one);
     element_clear(grb);element_clear(g3);element_clear(g3_inv);element_clear(mgr);
-    element_clear(calc_result);
-    free(calc_result_str);
+    mpz_clear(b_one); element_clear(calc_result); free(calc_result_str);
 }
 
 void calc_result_str_convert_to_key_origin(char *key, char * calc_result_str) {
@@ -354,14 +338,16 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
         }
     }
     if(mode == 1) {
+        /* --- aをセット --- */
+        mpz_set_str(a, get_str_data("A", "a"), 10);
         /* --- keyAを暗号化 --- */
         encipher_key(keyA);
         /* --- r(aQ) を計算 --- */
         EC_POINT raQ; point_init(raQ, p->g2);
-        point_mul(raQ, a, Q); point_mul(raQ, r, raQ); point_get_str(keyC, raQ);
+        point_mul(raQ, a, Q); point_mul(raQ, r, raQ); point_get_str(keyB, raQ);
         /* --- アウトプット --- */
         output_key_txt("keyA", outfolda, keyA);
-        output_key_txt("keyB", outfolda, keyC);
+        output_key_txt("keyB", outfolda, keyB);
     }else if(mode != 2){
         printf("データの復号が完了しました．\n");
     }
@@ -409,13 +395,41 @@ int main(void){
     return 0;
 }
 
-void output_base_variable() {
-    print_green_color("---------------- CRYPTO DATA ----------------\n");
-    print_green_color("limit : "); gmp_printf ("%Zd\n", limit);
-    print_green_color("P     : "); point_print(P);
-    print_green_color("Q     : "); point_print(Q);
-    print_green_color("a     : "); gmp_printf ("%Zd\n", a);
-    print_green_color("b     : "); gmp_printf ("%Zd\n", b);
-    print_green_color("r     : "); gmp_printf ("%Zd\n", r);
-    print_green_color("---------------------------------------------\n");
+void set_crypto_data(){
+    /* --- 初期化 --- */
+    pairing_init(p, "ECBN254a");
+    point_init(P, p->g1);
+    point_init(Q, p->g2);
+    mpz_init(a); mpz_init(b); mpz_init(r); mpz_init(limit);
+    /* --- 上限値を設定 --- */
+    char limit_char[78]
+        = "16030569034403128277756688287498649515510226217719936227669524443298095169537";
+    mpz_set_str(limit, limit_char, 10);
+    /* --- 乱数rを設定 --- */
+    create_mpz_t_random(r, limit);
+    /* --- 点P, Qを設定 --- */
+    char P_char[132]; get_str_std_data(P_char, "P");
+    point_init(P, p->g1); point_set_str(P, P_char);
+    char Q_char[261]; get_str_std_data(Q_char, "Q");
+    point_init(Q, p->g2); point_set_str(Q, Q_char);
+}
+
+char *get_str_data(char *user, char *data){
+    /* --- 通知 --- */
+    printf("\x1b[46m\x1b[30m");
+    printf("User %s が知る %s を利用します．", user, data);
+    printf("\x1b[49m\x1b[39m\n");
+    
+    /* --- 読み込み --- */
+    FILE *loadfile;
+    char loadfilename[1000];
+    sprintf(loadfilename,"stakeholder/%s/%s.txt",user, data);
+    loadfile = fopen(loadfilename, "r");
+    if (loadfile == NULL) {
+        printf("%s/%s.txtを開けませんでした．\n", user, data);
+        exit(1);
+    }
+    fgets(str,1000,loadfile);
+    fclose(loadfile);
+    return str;
 }
