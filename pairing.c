@@ -33,10 +33,10 @@ void set_crypto_data(){
     char Q_char[261]; get_str_data(Q_char, "Q");
     point_init(Q, p->g2); point_set_str(Q, Q_char);
     /* --- 秘密鍵a,bと乱数rを設定 --- */
-    char a_char[78], b_char[78], r_char[78] ;
-    get_str_data(a_char, "a"); get_str_data(b_char, "b"); get_str_data(r_char, "r");
+    char a_char[78], b_char[78];
+    get_str_data(a_char, "a"); get_str_data(b_char, "b");
     mpz_init(a); mpz_init(b); mpz_init(r);
-    mpz_set_str(a, a_char, 10); mpz_set_str(b, b_char, 10); mpz_set_str(r, r_char, 10);
+    mpz_set_str(a, a_char, 10); mpz_set_str(b, b_char, 10); create_mpz_t_random(r, limit);
     /* --- 出力テスト --- */
 //  output_base_variable();
 }
@@ -120,31 +120,54 @@ int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, 
 
 // 鍵を出力する関数
 void output_key_txt(int mode, unsigned char *key, unsigned char *outfolda) {
+/* --- mg^r を出力 --- */
     FILE *outfile;
     char openfilename[1000];
-    sprintf(openfilename,"%s/key.txt",outfolda);
+    sprintf(openfilename,"%s/keyA.txt",outfolda);
     outfile = fopen(openfilename, "w+");
     if (outfile == NULL) {
-        printf("鍵を書き出す時にkey.txtを開けませんでした．\n");
+        printf("鍵を書き出す時にkeyA.txtを開けませんでした．\n");
         exit(1);
     }
     fprintf(outfile, "%s", key);
     fclose(outfile);
+/* --- raQ を出力 --- */
+    /* --- r(aQ) を計算 --- */
+    EC_POINT raQ; point_init(raQ, p->g2);
+    point_mul(raQ, a, Q); point_mul(raQ, r, raQ);
+    char raQ_char[1000]; point_get_str(raQ_char, raQ);
+    /* --- 出力 --- */
+    sprintf(openfilename,"%s/keyB.txt",outfolda);
+    outfile = fopen(openfilename, "w+");
+    if (outfile == NULL) {
+        printf("鍵を書き出す時にkeyB.txtを開けませんでした．\n");
+        exit(1);
+    }
+    fprintf(outfile, "%s", raQ_char);
+    fclose(outfile);
 }
 
 // 鍵を読み込む関数
-void load_key_txt(int mode, unsigned char *key, unsigned char *infolda) {
+void load_key_txt(int mode, unsigned char *keyA, unsigned char *keyB, unsigned char *infolda) {
+    /* --- keyA --- */
     FILE *loadfile;
     char loadfilename[1000];
-    sprintf(loadfilename,"%s/key.txt",infolda);
+    sprintf(loadfilename,"%s/keyA.txt",infolda);
     loadfile = fopen(loadfilename, "r");
     if (loadfile == NULL) {
-        printf("鍵を読み込む時にkey.txtを開けませんでした．\n");
+        printf("鍵を読み込む時にkeyA.txtを開けませんでした．\n");
         exit(1);
     }
-    unsigned char str[1024];
-    fgets(str,1024,loadfile);
-    strcpy(key, str);
+    unsigned char str[1024]; fgets(str,1024,loadfile); strcpy(keyA, str);
+    fclose(loadfile);
+    /* --- keyB --- */
+    sprintf(loadfilename,"%s/keyB.txt",infolda);
+    loadfile = fopen(loadfilename, "r");
+    if (loadfile == NULL) {
+        printf("鍵を読み込む時にkeyB.txtを開けませんでした．\n");
+        exit(1);
+    }
+    fgets(str,1024,loadfile); strcpy(keyB, str);
     fclose(loadfile);
 }
 
@@ -181,11 +204,10 @@ void encipher_key(unsigned char *msg) {
 }
 
 // 通常の復号を行う関数
-void decode_key(char *key) {
-    int i;
-    /* --- r(aQ) を計算 --- */
+void decode_key(char *key, const char *raQ_char) {
+    /* --- r(aQ) をセット --- */
     EC_POINT raQ; point_init(raQ, p->g2);
-    point_mul(raQ, a, Q); point_mul(raQ, r, raQ);
+    point_set_str(raQ, raQ_char);
     /* --- 1/aを計算 --- */
     mpz_t a_one; mpz_init(a_one); mpz_invert(a_one, a, limit);
     /* --- (1/a)Pを計算 --- */
@@ -218,7 +240,6 @@ void decode_key(char *key) {
 
 // 再暗号化の復号を行う関数
 void decode_re_key(char *key) {
-    int i;
     /* --- r(aQ) を計算 --- */
     EC_POINT raQ; point_init(raQ, p->g2);
     point_mul(raQ, a, Q); point_mul(raQ, r, raQ);
@@ -283,7 +304,7 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
     struct dirent *dp;
     char original[100];
     char operated[100];
-    unsigned char key[1024];
+    unsigned char keyA[1024], keyB[1024]; // A: mg^r, B: r(aQ)
 
     if((indir = opendir(infolda)) == NULL) {
         printf("フォルダ %s が開けませんでした。\n", infolda);
@@ -295,8 +316,8 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
 
     if(mode == 1) {
         while(1){
-            printf("暗号化を行います\n鍵の入力(15-70文字): "); scanf("%s",key);
-            if(15<=strlen(key) && strlen(key)<=70) break;
+            printf("暗号化を行います\n鍵の入力(15-70文字): "); scanf("%s",keyA);
+            if(15<=strlen(keyA) && strlen(keyA)<=70) break;
             else printf("15文字以上70文字以内で入力してください．\n");
         }
     }else if(mode == 2){
@@ -304,25 +325,33 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
         printf("再暗号化にデータの変換は必要ありません．\n");
     } else {
         printf("データを復号します\n");
-        load_key_txt(mode, key, infolda);
-        if(mode == 3) decode_key(key);
-        if(mode == 4) decode_re_key(key);
+        load_key_txt(mode, keyA, keyB, infolda);
+        if(mode == 3) decode_key(keyA, keyB); // TODO: keyBも引数に
+        if(mode == 4) decode_re_key(keyA);
     }
     if(mode != 2){
         for(dp=readdir(indir); dp!=NULL; dp=readdir(indir)){
             if(*dp->d_name != '.') {
-                if(strcmp(dp->d_name, "key.txt") != 0) {     // txtの暗号化・復号は必要ない
+                if(mode==1 && strcmp(dp->d_name, "keyA.txt") == 0){
+                    printf("仕様上 \"keyA.txt\" は暗号化できません．暗号化をスキップします．\n");
+                    continue;
+                }
+                if(mode==1 && strcmp(dp->d_name, "keyB.txt") == 0){
+                    printf("仕様上 \"keyB.txt\" は暗号化できません．暗号化をスキップします．\n");
+                    continue;
+                }
+                if(strcmp(dp->d_name, "keyA.txt") != 0 && strcmp(dp->d_name, "keyB.txt") != 0) { // txtの暗号化・復号は必要ない
                     sprintf(original,"%s/%s",infolda,dp->d_name);   // オリジナルのファイル名生成
                     sprintf(operated,"%s/%s",outfolda,dp->d_name);  // 処理ファイル名生成
                     printf("%s -> %s\n", original, operated);
-                    AES(original, operated, key, iv, mode);         // ここでファイルの暗号化・復号処理
+                    AES(original, operated, keyA, iv, mode);         // ここでファイルの暗号化・復号処理
                 }
             }
         }
     }
     if(mode == 1) {
-        encipher_key(key);
-        output_key_txt(mode, key, outfolda);
+        encipher_key(keyA);
+        output_key_txt(mode, keyA, outfolda);
     }
     closedir(indir);
 }

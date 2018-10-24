@@ -28,10 +28,6 @@ void get_str_data(char *data, char *mode) {
         strcpy(data, "15575247102814595268991362522128798238579927044546364420695723202568034604417");
         return;
     }
-    if(strcmp(mode, "r") == 0){
-        strcpy(data, "15833325551303335696826520837210818211886400884180425394003914246575514612145");
-        return;
-    }
 }
 
 // ファイルのサイズを計測する関数
@@ -109,6 +105,29 @@ unsigned long convert_hex_string_into_long_type(const char *x){
         exp *= 16;
     }
     return result;
+}
+
+/* -----------------------------------------------
+ * mpz_tでランダムな値を生成する関数
+ * $0 生成した値を入れる変数
+ * $1 上限値
+ * 参考サイト: https://sehermitage.web.fc2.com/etc/gmp_src.html
+ -----------------------------------------------*/
+void create_mpz_t_random(mpz_t op, const mpz_t n) {
+    gmp_randstate_t state;
+    gmp_randinit_default(state);
+    
+    struct timeval tv, tv2;
+    gettimeofday(&tv2, NULL);
+    
+    do {
+        gettimeofday(&tv, NULL);
+    } while (tv.tv_usec == tv2.tv_usec);
+    
+    gmp_randseed_ui(state, tv.tv_usec);
+    mpz_urandomm(op, state, n);
+    
+    gmp_randclear(state);
 }
 
 
