@@ -1,4 +1,4 @@
-// gcc -o pairing pairing.c -ltepla -lssl -lgmp -lcrypto -std=c99
+// gcc -o pairing pairing.c -ltepla -lssl -lgmp -lcrypto
 #include <sys/time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,19 +22,6 @@ void set_crypto_data();
 char *get_str_data(char *user, char *data);
 void calc_result_str_convert_to_key_origin(char *key, char * calc_result_str);
 
-// ファイルのサイズを計測する関数
-unsigned long GetFileSize(char *fname){
-    FILE *fgetfilesize;
-    if((fgetfilesize = fopen(fname, "rb")) == NULL ){
-        printf("ファイル %s が開けませんでした。\n", fname);
-        return -1;
-    }
-    fseek(fgetfilesize, 0, SEEK_END);
-    long size = ftell(fgetfilesize);
-    fclose(fgetfilesize);
-    return size;
-}
-
 // AESを実際に行う関数
 int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, int do_encrypt){
     // do_encrypt: 1:暗号化 / 0:復号
@@ -53,17 +40,13 @@ int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, 
 
     //バッファサイズの設定
     unsigned long in_size;
-    in_size = GetFileSize(in_fname);
-    printf("size = %lu\n", in_size);
+    in_size = get_file_size(in_fname);
+    printf("[size = %9lu] ", in_size);
 
-    if((inbuf = malloc(sizeof(char)*in_size)) == NULL){
-        printf("inbufのメモリが確保できませんでした。\n");
-        exit(-1);
-    }
-    if((outbuf = malloc(sizeof(char)*(int)(in_size+EVP_MAX_BLOCK_LENGTH))) == NULL) {
-        printf("outbufのメモリが確保できませんでした。\n");
-        exit(-1);
-    }
+    if((inbuf = malloc(sizeof(char)*in_size)) == NULL)
+        error_notice(1000, "inbuf", __func__, __LINE__);
+    if((outbuf = malloc(sizeof(char)*(int)(in_size+EVP_MAX_BLOCK_LENGTH))) == NULL)
+        error_notice(1000, "outbuf", __func__, __LINE__);
 
     EVP_CIPHER_CTX ctx;
     EVP_CIPHER_CTX_init(&ctx);
@@ -105,10 +88,7 @@ void output_key_txt(char *output_name, unsigned char *outfolda, unsigned char *k
     char openfilename[1000];
     sprintf(openfilename,"%s/%s.txt", outfolda, output_name);
     outfile = fopen(openfilename, "w+");
-    if (outfile == NULL) {
-        printf("鍵を書き出す時に%s.txtを開けませんでした．\n", output_name);
-        exit(1);
-    }
+    if (outfile == NULL) error_notice(1001, output_name, __func__, __LINE__);
     fprintf(outfile, "%s", key);
     fclose(outfile);
 }
@@ -119,10 +99,7 @@ void load_key_txt(char *load_name, unsigned char *infolda, unsigned char *key){
     char loadfilename[1000];
     sprintf(loadfilename,"%s/%s.txt",infolda, load_name);
     loadfile = fopen(loadfilename, "r");
-    if (loadfile == NULL) {
-        printf("鍵を読み込む時に%s.txtを開けませんでした．\n", load_name);
-        exit(1);
-    }
+    if (loadfile == NULL) error_notice(1002, load_name, __func__, __LINE__);
     unsigned char str[1024]; fgets(str,1024,loadfile); strcpy(key, str);
     fclose(loadfile);
 }
@@ -177,9 +154,8 @@ void re_encipher_key(unsigned char *raQ_char, char *keyC) {
     Element grb; element_init(grb, p->g3); pairing_map(grb, re_Key, raQ, p);
     int grb_char_size = element_get_str_length(grb);
     char *grb_char;
-    if((grb_char = (char *)malloc(element_get_str_length(grb)+1)) == NULL) {
-        printf("Memory could not be secured.\n"); exit(1);
-    }
+    if((grb_char = (char *)malloc(element_get_str_length(grb)+1)) == NULL)
+        error_notice(1000, "grb_char", __func__, __LINE__);
     element_get_str(grb_char, grb);
     strcpy(keyC, grb_char);
 /* --- 領域解放 --- */
@@ -210,9 +186,8 @@ void decode_key(char *key, const char *raQ_char) {
     /* --- Elementを16進数文字列に変換 --- */
     int calc_result_str_size = element_get_str_length(calc_result);
     char *calc_result_str;
-    if((calc_result_str = (char *)malloc(calc_result_str_size+1)) == NULL) {
-        printf("Memory could not be secured.\n"); exit(1);
-    }
+    if((calc_result_str = (char *)malloc(calc_result_str_size+1)) == NULL)
+        error_notice(1000, "calc_result_str", __func__, __LINE__);
     element_get_str(calc_result_str, calc_result);
     /* --- 変換 --- */
     calc_result_str_convert_to_key_origin(key, calc_result_str);
@@ -244,9 +219,8 @@ void decode_re_key(char *key, char *grb_char) {
     /* --- Elementを16進数文字列に変換 --- */
     int calc_result_str_size = element_get_str_length(calc_result);
     char *calc_result_str;
-    if((calc_result_str = (char *)malloc(calc_result_str_size+1)) == NULL) {
-        printf("Memory could not be secured.\n"); exit(1);
-    }
+    if((calc_result_str = (char *)malloc(calc_result_str_size+1)) == NULL)
+        error_notice(1000, "calc_result_str", __func__, __LINE__);
     element_get_str(calc_result_str, calc_result);
     /* --- 変換 --- */
     calc_result_str_convert_to_key_origin(key, calc_result_str);
@@ -276,6 +250,7 @@ void calc_result_str_convert_to_key_origin(char *key, char * calc_result_str) {
     strcpy(key, msg_decode);
 }
 
+// 暗号化・復号に必要なデータを揃える関数
 void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *iv){
     DIR *indir;
     struct dirent *dp;
@@ -283,13 +258,10 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
     char operated[100];
     unsigned char keyA[1024], keyB[1024], keyC[1024]; // A: mg^r, B: r(aQ), C: g^rb
 
-    if((indir = opendir(infolda)) == NULL) {
-        printf("フォルダ %s が開けませんでした。\n", infolda);
-        exit(-1);
-    } else if((opendir(outfolda)) == NULL) {
-        printf("フォルダ %s が開けませんでした。\n", outfolda);
-        exit(-1);
-    }
+    if((indir = opendir(infolda)) == NULL)
+        error_notice(1003, infolda, __func__, __LINE__);
+    else if((opendir(outfolda)) == NULL)
+        error_notice(1003, outfolda, __func__, __LINE__);
 
     if(mode == 1) {
         while(1){
@@ -332,8 +304,8 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
                 }
                 sprintf(original,"%s/%s",infolda,dp->d_name);   // オリジナルのファイル名生成
                 sprintf(operated,"%s/%s",outfolda,dp->d_name);  // 処理ファイル名生成
-                printf("%s -> %s\n", original, operated);
                 AES(original, operated, keyA, iv, mode);         // ここでファイルの暗号化・復号処理
+                printf("%s -> %s\n", original, operated);
             }
         }
     }
@@ -402,9 +374,8 @@ void set_crypto_data(){
     point_init(Q, p->g2);
     mpz_init(a); mpz_init(b); mpz_init(r); mpz_init(limit);
     /* --- 上限値を設定 --- */
-    char limit_char[78]
-        = "16030569034403128277756688287498649515510226217719936227669524443298095169537";
-    mpz_set_str(limit, limit_char, 10);
+    char limit_char[78];
+    get_str_std_data(limit_char, "limit"); mpz_set_str(limit, limit_char, 10);
     /* --- 乱数rを設定 --- */
     create_mpz_t_random(r, limit);
     /* --- 点P, Qを設定 --- */

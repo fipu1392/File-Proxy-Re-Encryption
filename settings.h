@@ -8,6 +8,11 @@ void print_green_color(const char *text){printf("\x1b[32m%s\x1b[39m",text);}
 
 // 指定されたmodeの固定値をdataにセットする
 void get_str_std_data(char *data, char *mode) {
+    /* --- 通知 --- */
+    printf("\x1b[46m\x1b[30m");
+    printf("データ %s を取得しました．", mode);
+    printf("\x1b[49m\x1b[39m\n");
+    
     if(strcmp(mode, "limit") == 0){
         strcpy(data, "16030569034403128277756688287498649515510226217719936227669524443298095169537");
         return;
@@ -122,7 +127,7 @@ void create_mpz_t_random(mpz_t op, const mpz_t n) {
     gmp_randclear(state);
 }
 
-
+// mpz_t型の数値の桁数を取得する(小数点以下は未対応)
 unsigned long get_length_type_mpz_t(mpz_t num){
     unsigned long length = 0;
     mpz_t q, ori, ten;
@@ -137,4 +142,35 @@ unsigned long get_length_type_mpz_t(mpz_t num){
         if(mpz_cmp_ui(ori, 0) == 0) break;
     }
     return length;
+}
+
+// エラー内容を出力する関数
+//format: error_notice(code, memo, __func__, __LINE__);
+void error_notice(int error_code, char *memo, const char *func_name, int line) {
+    printf("\x1b[31m");
+    printf("ERROR CODE(%d) :", error_code);
+    switch (error_code) {
+        case 1000:
+            printf("MEMORY ALLOCATION ERROR\n");
+            printf("%sのメモリが確保できませんでした。\n", memo);
+            break;
+        case 1001:
+            printf("FILE OPEN ERROR\n");
+            printf("鍵を書き出す時に %s.txt を開けませんでした．\n", memo);
+            break;
+        case 1002:
+            printf("FILE OPEN ERROR\n");
+            printf("鍵を読み込む時に %s.txt を開けませんでした．\n", memo);
+            break;
+        case 1003:
+            printf("FOLDER OPEN ERROR\n");
+            printf("フォルダ %s が開けませんでした。\n", memo);
+            break;
+        default:
+            printf("UNKNOWN ERROR\n");
+            break;
+    }
+    printf("[debug info] %d: %s\n", line, func_name);
+    printf("\x1b[39m");
+    exit(1);
 }
