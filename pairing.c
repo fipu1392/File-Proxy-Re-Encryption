@@ -1,8 +1,9 @@
-// gcc -o pairing pairing.c -ltepla -lssl -lgmp -lcrypto
+// gcc -o pairing pairing.c -ltepla -lssl -lgmp -lcrypto -fopenmp
 #include <sys/time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <omp.h>
 
 #include <gmp.h>
 #include <dirent.h>
@@ -41,7 +42,7 @@ int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, 
     //バッファサイズの設定
     unsigned long in_size;
     in_size = get_file_size(in_fname);
-    printf("[size = %9lu] ", in_size);
+    printf("[size = %9lu]", in_size);
 
     if((inbuf = malloc(sizeof(char)*in_size)) == NULL)
         error_notice(1000, "inbuf", __func__, __LINE__);
@@ -304,19 +305,24 @@ void AES_folda_inputkey(int mode, char *infolda, char *outfolda, unsigned char *
                 }
                 sprintf(original,"%s/%s",infolda,dp->d_name);   // オリジナルのファイル名生成
                 sprintf(operated,"%s/%s",outfolda,dp->d_name);  // 処理ファイル名生成
+                
+                double start, end;
+                start = omp_get_wtime();
                 AES(original, operated, keyA, iv, mode);         // ここでファイルの暗号化・復号処理
+                end = omp_get_wtime();
+                printf("[time = %.20lf] ", end-start);
+                
                 printf("%s -> %s\n", original, operated);
             }
         }
     }
     if(mode == 1) {
-        /* --- aをセット --- */
-        mpz_set_str(a, get_str_data("A", "a"), 10);
         /* --- keyAを暗号化 --- */
         encipher_key(keyA);
         /* --- r(aQ) を計算 --- */
         EC_POINT raQ; point_init(raQ, p->g2);
-        point_mul(raQ, a, Q); point_mul(raQ, r, raQ); point_get_str(keyB, raQ);
+        point_set_str(raQ, get_str_data("A", "aQ"));
+        point_mul(raQ, r, raQ); point_get_str(keyB, raQ);
         /* --- アウトプット --- */
         output_key_txt("keyA", outfolda, keyA);
         output_key_txt("keyB", outfolda, keyB);
