@@ -166,6 +166,10 @@ void error_notice(int error_code, char *memo, const char *func_name, int line) {
             printf("FOLDER OPEN ERROR\n");
             printf("フォルダ %s が開けませんでした。\n", memo);
             break;
+        case 9999:
+            printf("UNKNOWN ERROR\n");
+            printf("予期していないエラーが発生しました．");
+            break;
         default:
             printf("UNKNOWN ERROR\n");
             break;
