@@ -165,10 +165,37 @@ void re_encipher_key(unsigned char *raQ_char, char *keyC) {
 }
 
 // 通常の復号を行う関数
-void decode_key(char *key, const char *raQ_char) {
+void decode_key_once(char *key, const char *gra_char) {
+    /* --- g^(ra) をセット --- */
+    Element gra; element_init(gra, p->g3); element_set_str(gra, gra_char);
+    /* --- aをセット --- */
+    mpz_set_str(a, get_str_data("A", "a"), 10);
+    /* --- 1/aを計算 --- */
+    mpz_t a_one; mpz_init(a_one); mpz_invert(a_one, a, limit);
+    /* --- (g^(ra))^(1/a) = g^r --- */
+    Element g3; element_init(g3, p->g3); element_pow(g3, gra, a_one);
+    /* --- g3の逆元を計算 --- */
+    Element g3_inv; element_init(g3_inv, p->g3); element_inv(g3_inv, g3);
+    /* --- 鍵をElementにセットする --- */
+    Element mgr; element_init(mgr, p->g3); element_set_str(mgr, key);
+    /* --- 割り算する(mg^r/g^r) --- */
+    Element calc_result; element_init(calc_result, p->g3);
+    element_mul(calc_result, mgr, g3_inv);
+    /* --- Elementを16進数文字列に変換 --- */
+    int calc_result_str_size = element_get_str_length(calc_result);
+    char *calc_result_str;
+    if((calc_result_str = (char *)malloc(calc_result_str_size+1)) == NULL)
+        error_notice(1000, "calc_result_str", __func__, __LINE__);
+    element_get_str(calc_result_str, calc_result);
+    /* --- 変換 --- */
+    calc_result_str_convert_to_key_origin(key, calc_result_str);
+    /* --- 領域解放 --- */
+    element_clear(gra);element_clear(g3);element_clear(g3_inv);element_clear(mgr);
+    mpz_clear(a_one); element_clear(calc_result); free(calc_result_str);
+}
+void decode_key_twice(char *key, const char *raQ_char) {
     /* --- r(aQ) をセット --- */
-    EC_POINT raQ; point_init(raQ, p->g2);
-    point_set_str(raQ, raQ_char);
+    EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, raQ_char);
     /* --- aをセット --- */
     mpz_set_str(a, get_str_data("A", "a"), 10);
     /* --- 1/aを計算 --- */
@@ -230,7 +257,7 @@ void decode_re_key(char *key, char *grb_char) {
     mpz_clear(b_one); element_clear(calc_result); free(calc_result_str);
 }
 
-void calc_result_str_convert_to_key_origin(char *key, char * calc_result_str) {
+void calc_result_str_convert_to_key_origin(char *key, char *calc_result_str) {
     /* --- strをスペースで分割してlong型に変換 --- */
     int i=1;
     unsigned long dec_msg_long[12];
@@ -257,7 +284,7 @@ void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda,
     struct dirent *dp;
     char original[100];
     char operated[100];
-    unsigned char keyA[1024], keyB[1024], keyC[1024]; // A: mg^r, B: r(aQ), C: g^rb
+    unsigned char keyA[1024], keyB[1024], keyC[1024]; // A: mg^r, B: g^(ra)||r(aQ), C: g^rb
 
     if((indir = opendir(infolda)) == NULL) error_notice(1003, infolda, __func__, __LINE__);
     else if((opendir(outfolda)) == NULL) error_notice(1003, outfolda, __func__, __LINE__);
@@ -278,10 +305,11 @@ void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda,
         printf("データを復号します．\n");
         load_key_txt("keyA", infolda, keyA);
         if(mode == 4 ) {
-            //TODO: 計算関数を作る
+            load_key_txt("keyB", infolda, keyB);
+            decode_key_once(keyA, keyB);
         } else if(mode == 5){
             load_key_txt("keyB", infolda, keyB);
-            decode_key(keyA, keyB);
+            decode_key_twice(keyA, keyB);
         } else if(mode == 6){
             load_key_txt("keyC", infolda, keyC);
             decode_re_key(keyA, keyC);
@@ -308,7 +336,7 @@ void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda,
                 
                 double start, end;
                 start = omp_get_wtime();
-                AES(original, operated, keyA, iv, crypt_mode);         // ここでファイルの暗号化・復号処理
+                AES(original, operated, keyA, iv, crypt_mode);  // ここでファイルの暗号化・復号処理
                 end = omp_get_wtime();
                 printf("[time = %.20lf] ", end-start);
                 printf("%s -> %s\n", original, operated);
@@ -320,11 +348,14 @@ void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda,
         /* --- keyAを暗号化 --- */
         encipher_key(keyA);
         if(mode == 1) {
-            // TODO: g^(ra)を計算
+            /* --- g^(ra) を計算 --- */
+            EC_POINT raP; point_init(raP, p->g1);
+            point_set_str(raP, get_str_data("A", "aP")); point_mul(raP, r, raP);
+            Element gra; element_init(gra, p->g3); pairing_map(gra, raP, Q, p);
+            element_get_str(keyB, gra);
         } else if(mode == 2) {
             /* --- r(aQ) を計算 --- */
-            EC_POINT raQ; point_init(raQ, p->g2);
-            point_set_str(raQ, get_str_data("A", "aQ"));
+            EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, get_str_data("A", "aQ"));
             point_mul(raQ, r, raQ); point_get_str(keyB, raQ);
         }
         /* --- アウトプット --- */
