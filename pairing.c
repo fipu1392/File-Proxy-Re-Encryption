@@ -20,8 +20,9 @@ mpz_t limit, a, b, r;
 char str[1000];
 
 void set_crypto_data();
+void question(int flag);
 char *get_str_data(char *user, char *data);
-void calc_result_str_convert_to_key_origin(char *key, char * calc_result_str);
+void calc_result_str_convert_to_key_origin(char *key, Element calc_result);
 
 // AESを実際に行う関数
 int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, int do_encrypt){
@@ -181,17 +182,12 @@ void decode_key_once(char *key, const char *gra_char) {
     /* --- 割り算する(mg^r/g^r) --- */
     Element calc_result; element_init(calc_result, p->g3);
     element_mul(calc_result, mgr, g3_inv);
-    /* --- Elementを16進数文字列に変換 --- */
-    int calc_result_str_size = element_get_str_length(calc_result);
-    char *calc_result_str;
-    if((calc_result_str = (char *)malloc(calc_result_str_size+1)) == NULL)
-        error_notice(1000, "calc_result_str", __func__, __LINE__);
-    element_get_str(calc_result_str, calc_result);
     /* --- 変換 --- */
-    calc_result_str_convert_to_key_origin(key, calc_result_str);
+    calc_result_str_convert_to_key_origin(key, calc_result);
     /* --- 領域解放 --- */
-    element_clear(gra);element_clear(g3);element_clear(g3_inv);element_clear(mgr);
-    mpz_clear(a_one); element_clear(calc_result); free(calc_result_str);
+    element_clear(gra); element_clear(g3); element_clear(g3_inv);
+    element_clear(mgr); element_clear(calc_result);
+    mpz_clear(a_one);
 }
 void decode_key_twice(char *key, const char *raQ_char) {
     /* --- r(aQ) をセット --- */
@@ -211,20 +207,12 @@ void decode_key_twice(char *key, const char *raQ_char) {
     /* --- 割り算する(mg^r/g^r) --- */
     Element calc_result; element_init(calc_result, p->g3);
     element_mul(calc_result, mgr, g2_inv);
-    /* --- Elementを16進数文字列に変換 --- */
-    int calc_result_str_size = element_get_str_length(calc_result);
-    char *calc_result_str;
-    if((calc_result_str = (char *)malloc(calc_result_str_size+1)) == NULL)
-        error_notice(1000, "calc_result_str", __func__, __LINE__);
-    element_get_str(calc_result_str, calc_result);
     /* --- 変換 --- */
-    calc_result_str_convert_to_key_origin(key, calc_result_str);
+    calc_result_str_convert_to_key_origin(key, calc_result);
     /* --- 領域解放 --- */
     mpz_clears(a_one,NULL);
-    point_clear(raQ);point_clear(a1P);
-    element_clear(g2);element_clear(g2_inv);element_clear(mgr);
-    element_clear(calc_result);
-    free(calc_result_str);
+    point_clear(raQ); point_clear(a1P);
+    element_clear(g2); element_clear(g2_inv); element_clear(mgr); element_clear(calc_result);
 }
 
 // 再暗号化の復号を行う関数
@@ -244,20 +232,20 @@ void decode_re_key(char *key, char *grb_char) {
     /* --- 割り算する(mg^r/g^r) --- */
     Element calc_result; element_init(calc_result, p->g3);
     element_mul(calc_result, mgr, g3_inv);
+    /* --- 変換 --- */
+    calc_result_str_convert_to_key_origin(key, calc_result);
+    /* --- 領域解放 --- */
+    element_clear(grb); element_clear(g3); element_clear(g3_inv); element_clear(mgr);
+    mpz_clear(b_one); element_clear(calc_result);
+}
+// Element型のmをcharに変換
+void calc_result_str_convert_to_key_origin(char *key, Element calc_result) {
     /* --- Elementを16進数文字列に変換 --- */
     int calc_result_str_size = element_get_str_length(calc_result);
     char *calc_result_str;
     if((calc_result_str = (char *)malloc(calc_result_str_size+1)) == NULL)
         error_notice(1000, "calc_result_str", __func__, __LINE__);
     element_get_str(calc_result_str, calc_result);
-    /* --- 変換 --- */
-    calc_result_str_convert_to_key_origin(key, calc_result_str);
-    /* --- 領域解放 --- */
-    element_clear(grb);element_clear(g3);element_clear(g3_inv);element_clear(mgr);
-    mpz_clear(b_one); element_clear(calc_result); free(calc_result_str);
-}
-
-void calc_result_str_convert_to_key_origin(char *key, char *calc_result_str) {
     /* --- strをスペースで分割してlong型に変換 --- */
     int i=1;
     unsigned long dec_msg_long[12];
@@ -372,39 +360,31 @@ int main(void){
     char infolda[6]  = "";
     char outfolda[6] = "";
     unsigned char iv[] ="0123456789abcdef";
-    int input, mode;
-    int crypt_mode;
+    int input, mode=0, flag=0, crypt_mode;
 
     // モード決定
-    while (1) {
-    loopA:
-        printf("暗号化するなら1, 復号するなら0を入力: "); scanf("%d", &input);
-        if(input == 1) goto loopB;
-        else if(input == 0) goto loopC;
-        else { printf("0または1を入力してください。\n"); goto loopA; }
-    loopB:
-        crypt_mode = 1;
-        printf("暗号化するなら1, 再暗号化するなら2を入力: "); scanf("%d", &input);
-        if(input == 1) goto loopD;
-        else if(input == 2) { mode = 3; break; }
-        else { printf("1または2を入力してください。\n"); goto loopB; }
-    loopC:
-        crypt_mode = 0;
-        printf("暗号化したものを復号するなら1, 再暗号化したものを復号するなら2を入力: "); scanf("%d", &input);
-        if(input == 1) goto loopE;
-        else if(input == 2) { mode = 6; break; }
-        else { printf("1または2を入力してください。\n"); goto loopC; }
-    loopD:
-        printf("再暗号化できないようにするなら1, 再暗号化できるようにするなら2を入力: "); scanf("%d", &input);
-        if(input == 1) { mode = 1; break; }
-        else if(input == 2) { mode = 2; break; }
-        else { printf("1または2を入力してください。\n"); goto loopD; }
-    loopE:
-        printf("再暗号化できないものなら1, 再暗号化していないものなら2を入力: "); scanf("%d", &input);
-        if(input == 1) { mode = 4; break; }
-        else if(input == 2) { mode = 5; break; }
-        else { printf("1または2を入力してください。\n"); goto loopE; }
-    }
+    do{
+        question(flag); scanf("%d", &input);
+        switch (flag) {
+            case 0:
+                input==1 ? flag=1 : input==0 ? flag=2 : question(99);
+                break;
+            case 1:
+                crypt_mode = 1;
+                input==1 ? flag=3 : input==2 ? mode=3 : question(100);
+                break;
+            case 2:
+                crypt_mode = 0;
+                input==1 ? flag=4 : input==2 ? mode=6 : question(100);
+                break;
+            case 3:
+                input==1 ? mode=1 : input==2 ? mode=2: question(100);
+                break;
+            case 4:
+                input==1 ? mode=4 : input==2 ? mode=5: question(100);
+                break;
+        }
+    }while(mode == 0);
     
     // フォルダ決定
     switch (mode) {
@@ -469,4 +449,14 @@ char *get_str_data(char *user, char *data){
     fgets(str,1000,loadfile);
     fclose(loadfile);
     return str;
+}
+
+void question(int flag){
+    if(flag==0) printf("暗号化するなら1, 復号するなら0を入力: ");
+    else if(flag==1) printf("暗号化するなら1, 再暗号化するなら2を入力: ");
+    else if(flag==2) printf("暗号化したものを復号するなら1, 再暗号化したものを復号するなら2を入力: ");
+    else if(flag==3) printf("再暗号化できないようにするなら1, 再暗号化できるようにするなら2を入力: ");
+    else if(flag==4) printf("再暗号化できないものなら1, 再暗号化していないものなら2を入力: ");
+    else if(flag==99) printf("0または1を入力してください。\n");
+    else if(flag==100) printf("1または2を入力してください。\n");
 }
