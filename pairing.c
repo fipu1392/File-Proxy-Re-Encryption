@@ -27,7 +27,6 @@ void calc_result_str_convert_to_key_origin(char *key, Element calc_result);
 // AESを実際に行う関数
 int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, int do_encrypt){
     // do_encrypt: 1:暗号化 / 0:復号
-    if(do_encrypt == 3 || do_encrypt == 4) do_encrypt = 0;
 
     // Allow enough space in output buffer for additional block
     // Bogus key and IV: we'd normally set these from another source.
@@ -292,7 +291,7 @@ void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda,
     } else {
         printf("データを復号します．\n");
         load_key_txt("keyA", infolda, keyA);
-        if(mode == 4 ) {
+        if(mode == 4) {
             load_key_txt("keyB", infolda, keyB);
             decode_key_once(keyA, keyB);
         } else if(mode == 5){
@@ -311,11 +310,11 @@ void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda,
                     if(mode == 1) printf("仕様上 \"keyA.txt\" は暗号化できません．暗号化をスキップします．\n");
                     continue;
                 }
-                if(strcmp(dp->d_name, "keyB.txt") == 0){
+                else if(strcmp(dp->d_name, "keyB.txt") == 0){
                     if(mode == 1) printf("仕様上 \"keyB.txt\" は暗号化できません．暗号化をスキップします．\n");
                     continue;
                 }
-                if(strcmp(dp->d_name, "keyC.txt") == 0){
+                else if(strcmp(dp->d_name, "keyC.txt") == 0){
                     if(mode == 1) printf("仕様上 \"keyC.txt\" は暗号化できません．暗号化をスキップします．\n");
                     continue;
                 }
@@ -335,6 +334,7 @@ void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda,
     if(mode == 1 || mode == 2) {
         /* --- keyAを暗号化 --- */
         encipher_key(keyA);
+        /* --- keyBを計算 --- */
         if(mode == 1) {
             /* --- g^(ra) を計算 --- */
             EC_POINT raP; point_init(raP, p->g1);
@@ -378,10 +378,10 @@ int main(void){
                 input==1 ? flag=4 : input==2 ? mode=6 : question(100);
                 break;
             case 3:
-                input==1 ? mode=1 : input==2 ? mode=2: question(100);
+                input==1 ? mode=1 : input==2 ? mode=2 : question(100);
                 break;
             case 4:
-                input==1 ? mode=4 : input==2 ? mode=5: question(100);
+                input==1 ? mode=4 : input==2 ? mode=5 : question(100);
                 break;
         }
     }while(mode == 0);
@@ -405,7 +405,6 @@ int main(void){
             break;
         default:
             error_notice(9999, "", __func__, __LINE__);
-            return 1;
     }
 
     set_crypto_data();
@@ -416,27 +415,24 @@ int main(void){
 void set_crypto_data(){
     /* --- 初期化 --- */
     pairing_init(p, "ECBN254a");
-    point_init(P, p->g1);
-    point_init(Q, p->g2);
+    point_init(P, p->g1); point_init(Q, p->g2);
     mpz_init(a); mpz_init(b); mpz_init(r); mpz_init(limit);
     /* --- 上限値を設定 --- */
-    char limit_char[78];
-    get_str_std_data(limit_char, "limit"); mpz_set_str(limit, limit_char, 10);
+    char limit_char[78]; mpz_set_str(limit, get_str_data("ALL", "limit"), 10);
     /* --- 乱数rを設定 --- */
     create_mpz_t_random(r, limit);
     /* --- 点P, Qを設定 --- */
-    char P_char[132]; get_str_std_data(P_char, "P");
-    point_init(P, p->g1); point_set_str(P, P_char);
-    char Q_char[261]; get_str_std_data(Q_char, "Q");
-    point_init(Q, p->g2); point_set_str(Q, Q_char);
+    char P_char[132]; point_init(P, p->g1); point_set_str(P, get_str_data("ALL", "P"));
+    char Q_char[261]; point_init(Q, p->g2); point_set_str(Q, get_str_data("ALL", "Q"));
 }
 
 char *get_str_data(char *user, char *data){
     /* --- 通知 --- */
-    printf("\x1b[46m\x1b[30m");
-    printf("User %s が知る %s を利用します．", user, data);
-    printf("\x1b[49m\x1b[39m\n");
-    
+    if(strcmp(user, "ALL")==0){
+        printf("\x1b[46m\x1b[30mデータ %s を取得しました．\x1b[49m\x1b[39m\n", data);
+    } else {
+        printf("\x1b[46m\x1b[30mUser %s が知る %s を利用します．\x1b[49m\x1b[39m\n", user, data);
+    }
     /* --- 読み込み --- */
     FILE *loadfile;
     char loadfilename[1000];

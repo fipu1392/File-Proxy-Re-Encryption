@@ -6,27 +6,6 @@
 // 緑色の文字を出力する
 void print_green_color(const char *text){printf("\x1b[32m%s\x1b[39m",text);}
 
-// 指定されたmodeの固定値をdataにセットする
-void get_str_std_data(char *data, char *mode) {
-    /* --- 通知 --- */
-    printf("\x1b[46m\x1b[30m");
-    printf("データ %s を取得しました．", mode);
-    printf("\x1b[49m\x1b[39m\n");
-    
-    if(strcmp(mode, "limit") == 0){
-        strcpy(data, "16030569034403128277756688287498649515510226217719936227669524443298095169537");
-        return;
-    }
-    if(strcmp(mode, "P") == 0){
-        strcpy(data, "[166a82a8bdcf172d07489bb331884cb84219c8c78abea91882d1a90d91ea3392,20122d20a8de010910499cca045fb32ae34a4f39bdf57c64c94520b77f9b36de]");
-        return;
-    }
-    if(strcmp(mode, "Q") == 0){
-        strcpy(data, "[130cf6ed98a2f60ace65816b3c4551e8054d5e0a5f30d61328ca4ddbb9f1a25d 1530df173e2999c6413fc6470fdcfb96e9ecdf7fe0f84cecaf53f0f018a99506,13c2d21337f30594c9a1970cc711693570d6ffa529d88edfc88fddf225b89d51 445217dc156274c6666196d89479069e89dda42451ff8b41cd2e634ad0d1502]");
-        return;
-    }
-}
-
 // ファイルのサイズを計測する関数
 unsigned long get_file_size(char *fname){
     long size;
@@ -125,23 +104,6 @@ void create_mpz_t_random(mpz_t op, const mpz_t n) {
     mpz_urandomm(op, state, n);
     
     gmp_randclear(state);
-}
-
-// mpz_t型の数値の桁数を取得する(小数点以下は未対応)
-unsigned long get_length_type_mpz_t(mpz_t num){
-    unsigned long length = 0;
-    mpz_t q, ori, ten;
-    mpz_init(q);
-    mpz_init_set(ori, num);
-    mpz_init_set_ui (ten, 10);
-
-    while (1) {
-        mpz_tdiv_q(q, ori, ten);
-        mpz_set(ori, q);
-        length++;
-        if(mpz_cmp_ui(ori, 0) == 0) break;
-    }
-    return length;
 }
 
 // エラー内容を出力する関数
