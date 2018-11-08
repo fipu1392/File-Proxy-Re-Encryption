@@ -110,7 +110,7 @@ void create_mpz_t_random(mpz_t op, const mpz_t n) {
 //format: error_notice(code, memo, __func__, __LINE__);
 void error_notice(int error_code, char *memo, const char *func_name, int line) {
     printf("\x1b[31m");
-    printf("ERROR CODE(%d) :", error_code);
+    printf("ERROR CODE(%d): ", error_code);
     switch (error_code) {
         case 1000:
             printf("MEMORY ALLOCATION ERROR\n");
@@ -123,10 +123,23 @@ void error_notice(int error_code, char *memo, const char *func_name, int line) {
         case 1002:
             printf("FILE OPEN ERROR\n");
             printf("鍵を読み込む時に %s.txt を開けませんでした．\n", memo);
+            if(strcmp(memo, "keyC")==0) printf("再暗号化の処理を行なっていない可能性があります．\n");
             break;
         case 1003:
             printf("FOLDER OPEN ERROR\n");
-            printf("フォルダ %s が開けませんでした。\n", memo);
+            printf("フォルダ %s が開けませんでした．\n", memo);
+            break;
+        case 2000:
+            printf("DATA FORMAT ERROR\n");
+            printf("再暗号化できないデータフォーマットです．\n");
+            break;
+        case 2001:
+            printf("DATA FORMAT ERROR\n");
+            printf("再暗号化が可能なデータフォーマットです．\n");
+            break;
+        case 2002:
+            printf("DATA FORMAT ERROR\n");
+            printf("一度しか暗号化ができないデータフォーマットです．\n");
             break;
         case 9999:
             printf("UNKNOWN ERROR\n");

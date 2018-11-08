@@ -283,9 +283,10 @@ void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda,
             else printf("15文字以上70文字以内で入力してください．\n");
         }
     } else if(mode == 3){
-            printf("再暗号化中です．\n");
-            load_key_txt("keyB", infolda, keyB);
-            re_encipher_key(keyB, keyC);
+        printf("再暗号化中です．\n");
+        load_key_txt("keyB", infolda, keyB);
+        if(*keyB != '[') error_notice(2000, "", __func__, __LINE__);
+        re_encipher_key(keyB, keyC);
         output_key_txt("keyC", outfolda, keyC);
         printf("再暗号化が完了しました．\n");
     } else {
@@ -293,9 +294,11 @@ void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda,
         load_key_txt("keyA", infolda, keyA);
         if(mode == 4) {
             load_key_txt("keyB", infolda, keyB);
+            if(*keyB == '[') error_notice(2001, "", __func__, __LINE__);
             decode_key_once(keyA, keyB);
         } else if(mode == 5){
             load_key_txt("keyB", infolda, keyB);
+            if(*keyB != '[') error_notice(2002, "", __func__, __LINE__);
             decode_key_twice(keyA, keyB);
         } else if(mode == 6){
             load_key_txt("keyC", infolda, keyC);
@@ -428,11 +431,13 @@ void set_crypto_data(){
 
 char *get_str_data(char *user, char *data){
     /* --- 通知 --- */
+    printf("\x1b[46m\x1b[30m");
     if(strcmp(user, "ALL")==0){
-        printf("\x1b[46m\x1b[30mデータ %s を取得しました．\x1b[49m\x1b[39m\n", data);
+        printf("データ %s を取得しました．", data);
     } else {
-        printf("\x1b[46m\x1b[30mUser %s が知る %s を利用します．\x1b[49m\x1b[39m\n", user, data);
+        printf("User %s が知る %s を利用します．", user, data);
     }
+    printf("\x1b[49m\x1b[39m\n");
     /* --- 読み込み --- */
     FILE *loadfile;
     char loadfilename[1000];
