@@ -18,6 +18,7 @@ EC_PAIRING p;
 EC_POINT P, Q;
 mpz_t limit, a, b, r;
 char str[1000];
+double start_time, finish_time;
 
 void set_crypto_data();
 void question(int flag);
@@ -48,7 +49,7 @@ int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, 
         error_notice(1000, "inbuf", __func__, __LINE__);
     if((outbuf = malloc(sizeof(char)*(int)(in_size+EVP_MAX_BLOCK_LENGTH))) == NULL)
         error_notice(1000, "outbuf", __func__, __LINE__);
-
+    start_time = omp_get_wtime();
     EVP_CIPHER_CTX ctx;
     EVP_CIPHER_CTX_init(&ctx);
     EVP_CipherInit_ex(&ctx, EVP_aes_128_cbc(), NULL, NULL, NULL, do_encrypt);
@@ -77,6 +78,8 @@ int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, 
         return 0;
     }
     fwrite(outbuf, 1, outlen, fout);
+    finish_time = omp_get_wtime();
+    printf("[time = %.20lf] ", finish_time-start_time);
     EVP_CIPHER_CTX_cleanup(&ctx);
     fcloses(fin, fout, NULL);
     frees(inbuf, outbuf, NULL);
@@ -108,6 +111,7 @@ void load_key_txt(char *load_name, unsigned char *infolda, unsigned char *key){
 // 鍵を暗号化する関数
 void encipher_key(unsigned char *msg) {
     int i, msg_len = strlen(msg), roop_num = msg_len/sizeof(long) + 1;
+    start_time = omp_get_wtime();
     /* -- g = e(P, Q)^r を生成 --- */
     Element g; element_init(g, p->g3);
     pairing_map(g, P, Q, p); element_pow(g, g, r);
@@ -130,6 +134,8 @@ void encipher_key(unsigned char *msg) {
     Element element_msg_key_calc_result;
     element_init(element_msg_key_calc_result, p->g3);
     element_mul(element_msg_key_calc_result, element_msg, g);
+    finish_time = omp_get_wtime();
+    printf("[key encrypt time = %.20lf]\n", finish_time-start_time);
     /* --- 計算結果をmsgに挿入 --- */
     element_get_str(msg, element_msg_key_calc_result);
     /* --- 領域解放 --- */
@@ -139,9 +145,10 @@ void encipher_key(unsigned char *msg) {
 
 // 鍵を再暗号化する関数
 void re_encipher_key(unsigned char *raQ_char, char *keyC) {
-/* --- r(aQ) をセット --- */
+    start_time = omp_get_wtime();
+    /* --- r(aQ) をセット --- */
     EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, raQ_char);
-/* --- 再暗号化鍵((1/a)bP)を作成 --- */
+    /* --- 再暗号化鍵((1/a)bP)を作成 --- */
     /* --- aをセット --- */
     mpz_set_str(a, get_str_data("A", "a"), 10);
     /* --- 1/aを計算 --- */
@@ -151,21 +158,24 @@ void re_encipher_key(unsigned char *raQ_char, char *keyC) {
     /* --- 再暗号化鍵の生成 --- */
     EC_POINT re_Key; point_init(re_Key, p->g1);
     point_mul(re_Key, a_one, bP);
-/* --- grb = e((1/a)bP, raQ) = e(P, Q)^rb --- */
+    /* --- grb = e((1/a)bP, raQ) = e(P, Q)^rb --- */
     Element grb; element_init(grb, p->g3); pairing_map(grb, re_Key, raQ, p);
+    finish_time = omp_get_wtime();
+    printf("[key re-encrypt time = %.20lf]\n", finish_time-start_time);
     int grb_char_size = element_get_str_length(grb);
     char *grb_char;
     if((grb_char = (char *)malloc(element_get_str_length(grb)+1)) == NULL)
         error_notice(1000, "grb_char", __func__, __LINE__);
     element_get_str(grb_char, grb);
     strcpy(keyC, grb_char);
-/* --- 領域解放 --- */
+    /* --- 領域解放 --- */
     point_clear(bP); point_clear(re_Key);
     mpz_clear(a_one); element_clear(grb);
 }
 
 // 通常の復号を行う関数
 void decode_key_once(char *key, const char *gra_char) {
+    start_time = omp_get_wtime();
     /* --- g^(ra) をセット --- */
     Element gra; element_init(gra, p->g3); element_set_str(gra, gra_char);
     /* --- aをセット --- */
@@ -189,6 +199,7 @@ void decode_key_once(char *key, const char *gra_char) {
     mpz_clear(a_one);
 }
 void decode_key_twice(char *key, const char *raQ_char) {
+    start_time = omp_get_wtime();
     /* --- r(aQ) をセット --- */
     EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, raQ_char);
     /* --- aをセット --- */
@@ -216,6 +227,7 @@ void decode_key_twice(char *key, const char *raQ_char) {
 
 // 再暗号化の復号を行う関数
 void decode_re_key(char *key, char *grb_char) {
+    start_time = omp_get_wtime();
     /* --- g^(rb)をセット --- */
     Element grb; element_init(grb, p->g3); element_set_str(grb, grb_char);
     /* --- bをセット --- */
@@ -261,7 +273,9 @@ void calc_result_str_convert_to_key_origin(char *key, Element calc_result) {
     char msg_decode[CODE_SIZE];
     memset(msg_decode,0,sizeof(msg_decode));
     memcpy(msg_decode,dec_msg_long,sizeof(char)*70); // TODO: 70でいいの？
-    print_green_color("plain key = "); printf("%s\n", msg_decode);
+    finish_time = omp_get_wtime();
+    printf("[key decrypt time = %.20lf]\n", finish_time-start_time);
+    print_green_color("AES key = "); printf("%s\n", msg_decode);
     strcpy(key, msg_decode);
 }
 
@@ -272,10 +286,10 @@ void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda,
     char original[100];
     char operated[100];
     unsigned char keyA[1024], keyB[1024], keyC[1024]; // A: mg^r, B: g^(ra)||r(aQ), C: g^rb
-
+    
     if((indir = opendir(infolda)) == NULL) error_notice(1003, infolda, __func__, __LINE__);
     else if((opendir(outfolda)) == NULL) error_notice(1003, outfolda, __func__, __LINE__);
-
+    
     if(mode == 1 || mode == 2) {
         while(1){
             printf("暗号化を行います．\nAES鍵の入力(15-70文字): "); scanf("%s",keyA);
@@ -323,12 +337,7 @@ void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda,
                 }
                 sprintf(original,"%s/%s",infolda,dp->d_name);   // オリジナルのファイル名生成
                 sprintf(operated,"%s/%s",outfolda,dp->d_name);  // 処理ファイル名生成
-                
-                double start, end;
-                start = omp_get_wtime();
                 AES(original, operated, keyA, iv, crypt_mode);  // ここでファイルの暗号化・復号処理
-                end = omp_get_wtime();
-                printf("[time = %.20lf] ", end-start);
                 printf("%s -> %s\n", original, operated);
             }
         }
@@ -355,7 +364,7 @@ void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda,
     } else if(mode != 3){
         printf("データの復号が完了しました．\n");
     }
-
+    
     closedir(indir);
 }
 
@@ -364,7 +373,7 @@ int main(void){
     char outfolda[6] = "";
     unsigned char iv[] ="0123456789abcdef";
     int input, mode=0, flag=0, crypt_mode;
-
+    
     // モード決定
     do{
         question(flag); scanf("%d", &input);
@@ -409,7 +418,7 @@ int main(void){
         default:
             error_notice(9999, "", __func__, __LINE__);
     }
-
+    
     set_crypto_data();
     AES_folda_inputkey(mode, crypt_mode, infolda, outfolda, iv);
     return 0;
