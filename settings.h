@@ -109,7 +109,7 @@ void create_mpz_t_random(mpz_t op, const mpz_t n) {
 }
 
 // ファイルの存在を確認する関数(0: false, 1: true)
-int file_existence(char *dir_path, char *filename){
+int file_exist(char *dir_path, char *filename){
     DIR *dir;
     struct dirent *dp;
     int ret = 0;

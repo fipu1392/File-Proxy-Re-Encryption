@@ -11,12 +11,14 @@
 #include "settings.h"
 #include "openssl/evp.h"
 
-#define ENCRYPT_INFOLDA     "Plain"
-#define ENCRYPT_OUTFOLDA    "Enc"
-#define RE_ENCRYPT_INFOLDA  "Enc"
-#define RE_ENCRYPT_OUTFOLDA "Enc"
-#define DECRYPT_INFOLDA     "Enc"
-#define DECRYPT_OUTFOLDA    "Dec"
+#define USER_A_DIR         "A"
+#define USER_B_DIR         "B"
+#define ENCRYPT_IN_DIR     "Plain"
+#define ENCRYPT_OUT_DIR    "Enc"
+#define RE_ENCRYPT_IN_DIR  "Enc"
+#define RE_ENCRYPT_OUT_DIR "Enc"
+#define DECRYPT_IN_DIR     "Enc"
+#define DECRYPT_OUT_DIR    "Dec"
 
 EC_PAIRING p;
 EC_POINT P, Q;
@@ -154,11 +156,11 @@ void re_encipher_key(char *raQ_char, char *keyC) {
     EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, raQ_char);
     /* --- 再暗号化鍵((1/a)bP)を作成 --- */
     /* --- aをセット --- */
-    mpz_set_str(a, get_str_data("A", "a"), 10);
+    mpz_set_str(a, get_str_data(USER_A_DIR, "a"), 10);
     /* --- 1/aを計算 --- */
     mpz_t a_one; mpz_init(a_one); mpz_invert(a_one, a, limit);
     /* --- bPをセット --- */
-    EC_POINT bP; point_init(bP, p->g1); point_set_str(bP, get_str_data("A", "bP"));
+    EC_POINT bP; point_init(bP, p->g1); point_set_str(bP, get_str_data(USER_A_DIR, "bP"));
     /* --- 再暗号化鍵の生成 --- */
     EC_POINT re_Key; point_init(re_Key, p->g1);
     point_mul(re_Key, a_one, bP);
@@ -183,7 +185,7 @@ void decode_key_once(char *key, const char *gra_char) {
     /* --- g^(ra) をセット --- */
     Element gra; element_init(gra, p->g3); element_set_str(gra, gra_char);
     /* --- aをセット --- */
-    mpz_set_str(a, get_str_data("A", "a"), 10);
+    mpz_set_str(a, get_str_data(USER_A_DIR, "a"), 10);
     /* --- 1/aを計算 --- */
     mpz_t a_one; mpz_init(a_one); mpz_invert(a_one, a, limit);
     /* --- (g^(ra))^(1/a) = g^r --- */
@@ -207,7 +209,7 @@ void decode_key_twice(char *key, const char *raQ_char) {
     /* --- r(aQ) をセット --- */
     EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, raQ_char);
     /* --- aをセット --- */
-    mpz_set_str(a, get_str_data("A", "a"), 10);
+    mpz_set_str(a, get_str_data(USER_A_DIR, "a"), 10);
     /* --- 1/aを計算 --- */
     mpz_t a_one; mpz_init(a_one); mpz_invert(a_one, a, limit);
     /* --- (1/a)Pを計算 --- */
@@ -235,7 +237,7 @@ void decode_re_key(char *key, char *grb_char) {
     /* --- g^(rb)をセット --- */
     Element grb; element_init(grb, p->g3); element_set_str(grb, grb_char);
     /* --- bをセット --- */
-    mpz_set_str(b, get_str_data("B", "b"), 10);
+    mpz_set_str(b, get_str_data(USER_B_DIR, "b"), 10);
     /* --- 1/bを計算 --- */
     mpz_t b_one; mpz_init(b_one); mpz_invert(b_one, b, limit);
     /* --- (g^(rb))^(1/b) = g^r --- */
@@ -333,7 +335,7 @@ void encrypt_mode(unsigned char *iv){
     }
     
     // ファイルの暗号化
-    file_conversion(1, ENCRYPT_INFOLDA, ENCRYPT_OUTFOLDA, keyA, iv);
+    file_conversion(1, ENCRYPT_IN_DIR, ENCRYPT_OUT_DIR, keyA, iv);
 
     // 鍵の暗号化
     set_crypto_data();
@@ -341,32 +343,32 @@ void encrypt_mode(unsigned char *iv){
     if(mode == 1) {     // keyB
         /* --- g^(ra) を計算 --- */
         EC_POINT raP; point_init(raP, p->g1);
-        point_set_str(raP, get_str_data("A", "aP")); point_mul(raP, r, raP);
+        point_set_str(raP, get_str_data(USER_A_DIR, "aP")); point_mul(raP, r, raP);
         Element gra; element_init(gra, p->g3); pairing_map(gra, raP, Q, p);
         element_get_str(keyB, gra);
         /* --- 領域解放 --- */
         point_clear(raP); element_clear(gra);
     } else if(mode == 2) {
         /* --- r(aQ) を計算 --- */
-        EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, get_str_data("A", "aQ"));
+        EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, get_str_data(USER_A_DIR, "aQ"));
         point_mul(raQ, r, raQ); point_get_str(keyB, raQ);
         /* --- 領域解放 --- */
         point_clear(raQ);
     }
     
     /* --- アウトプット --- */
-    output_key_txt("C_a", ENCRYPT_OUTFOLDA, keyA, keyB);
+    output_key_txt("C_a", ENCRYPT_OUT_DIR, keyA, keyB);
     printf("データの暗号化が完了しました．\n");
 }
 
 void re_encrypt_mode() {
     char keyA[1024], keyB[1024], keyC[1024];
-    load_key_txt("C_a", RE_ENCRYPT_INFOLDA, keyA, keyB);
+    load_key_txt("C_a", RE_ENCRYPT_IN_DIR, keyA, keyB);
     if(*keyB != '[') error_notice(2000, "", __func__, __LINE__);
     print_green_color("再暗号化を行います．\n");
     set_crypto_data();
     re_encipher_key(keyB, keyC);
-    output_key_txt("C_b", RE_ENCRYPT_OUTFOLDA, keyA, keyC);
+    output_key_txt("C_b", RE_ENCRYPT_OUT_DIR, keyA, keyC);
     printf("再暗号化が完了しました．\n");
 }
 
@@ -375,11 +377,11 @@ void decrypt_mode(unsigned char *iv) {
     char keyA[1024], keyB[1024], keyC[1024];
 
     // 復号モード決定
-    if(file_existence("./Enc/", "C_b.txt")) {
-        load_key_txt("C_b", DECRYPT_INFOLDA, keyA, keyC);
+    if(file_exist("./Enc/", "C_b.txt")) {
+        load_key_txt("C_b", DECRYPT_IN_DIR, keyA, keyC);
         mode = 1;
     } else {
-        load_key_txt("C_a", DECRYPT_INFOLDA, keyA, keyB);
+        load_key_txt("C_a", DECRYPT_IN_DIR, keyA, keyB);
         mode = *keyB == '[' ? 2 : 3;
     }
 
@@ -397,28 +399,25 @@ void decrypt_mode(unsigned char *iv) {
     }
     
     // ファイルの復号
-    file_conversion(0, DECRYPT_INFOLDA, DECRYPT_OUTFOLDA, keyA, iv);
+    file_conversion(0, DECRYPT_IN_DIR, DECRYPT_OUT_DIR, keyA, iv);
     printf("復号が完了しました．\n");
 }
 
 int main(void){
     // key.\.txt -> A: mg^r, B: g^(ra)||r(aQ), C: g^rb
-    char infolda[6]  = "";
-    char outfolda[6] = "";
     unsigned char iv[] ="0123456789abcdef";
-    int input, mode=0, flag=0, do_encrypt;
+    int input, mode;
     
     // モード決定
     while(1){
-        printf("暗号化するなら1, 再暗号化するなら2, 復号するなら0を入力: "); scanf("%d", &input);
-        mode = input==1 ? 1 : input==2 ? 2 : input==0 ? 3 : 0;
-        if(mode!=0) break;
+        printf("暗号化するなら1, 再暗号化するなら2, 復号するなら0を入力: "); scanf("%d", &mode);
+        if(mode==1 || mode==2 || mode==0) break;
         print_red_color("0, 1, 2のいずれかを入力してください，\n");
     }
     
     if(mode == 1) encrypt_mode(iv);
     else if(mode == 2) re_encrypt_mode(iv);
-    else if(mode == 3) decrypt_mode(iv);
+    else if(mode == 0) decrypt_mode(iv);
 
     return 0;
 }
