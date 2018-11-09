@@ -18,9 +18,6 @@
 #define DECRYPT_INFOLDA     "Enc"
 #define DECRYPT_OUTFOLDA    "Dec"
 
-#define MESSAGE_SIZE 10000
-#define CODE_SIZE MESSAGE_SIZE/sizeof(long)
-
 EC_PAIRING p;
 EC_POINT P, Q;
 mpz_t limit, a, b, r;
@@ -122,7 +119,7 @@ void encipher_key(unsigned char *msg) {
     Element g; element_init(g, p->g3);
     pairing_map(g, P, Q, p); element_pow(g, g, r);
     /* --- 平文をlong型にした後、16進数表記のchar型に変換 --- */
-    unsigned long enc_msg_long[CODE_SIZE];
+    unsigned long enc_msg_long[1024];
     memset(enc_msg_long,0,sizeof(enc_msg_long)); memcpy(enc_msg_long,msg,msg_len);
     /* --- 16進数表記のchar型平文をElement型に変換 --- */
     Element element_msg; element_init(element_msg, p->g3);
@@ -276,7 +273,7 @@ void calc_result_str_convert_to_key_origin(char *key, Element calc_result) {
     for(i=0;i<12;i++) if(strcmp(dec_msg_str[i], "0")!=0)
         dec_msg_long[i] = convert_hex_string_into_long_type(dec_msg_str[i]);
     /* --- decode --- */
-    char msg_decode[CODE_SIZE];
+    char msg_decode[1024];
     memset(msg_decode,0,sizeof(msg_decode));
     memcpy(msg_decode,dec_msg_long,sizeof(char)*70); // TODO: 70でいいの？
     finish_time = omp_get_wtime();
@@ -326,13 +323,13 @@ void encrypt_mode(unsigned char *iv){
     while(1){
         printf("再暗号化できないようにするなら1, 再暗号化できるようにするなら2を入力: "); scanf("%d", &mode);
         if(mode!=0) break;
-        printf("1または2を入力してください．\n");
+        print_red_color("1または2を入力してください．\n");
     }
-    
+    print_green_color("暗号化を行います\n");
     while(1){
-        printf("暗号化を行います．\nAES鍵の入力(15-70文字): "); scanf("%s",keyA);
+        printf("AES鍵の入力(15-70文字): "); scanf("%s",keyA);
         if(15<=strlen(keyA) && strlen(keyA)<=70) break;
-        else printf("15文字以上70文字以内で入力してください．\n");
+        else print_red_color("15文字以上70文字以内で入力してください．\n");
     }
     
     // ファイルの暗号化
@@ -418,7 +415,7 @@ int main(void){
         printf("暗号化するなら1, 再暗号化するなら2, 復号するなら0を入力: "); scanf("%d", &input);
         mode = input==1 ? 1 : input==2 ? 2 : input==0 ? 3 : 0;
         if(mode!=0) break;
-        printf("0, 1, 2もいずれかを入力してください，\n");
+        print_red_color("0, 1, 2のいずれかを入力してください，\n");
     }
     
     if(mode == 1) encrypt_mode(iv);

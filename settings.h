@@ -4,8 +4,9 @@
 #include <stdarg.h>
 #include <dirent.h>
 
-// 緑色の文字を出力する
+// 色付き文字を出力する
 void print_green_color(const char *text){printf("\x1b[32m%s\x1b[39m",text);}
+void   print_red_color(const char *text){printf("\x1b[31m%s\x1b[39m",text);}
 
 // ファイルのサイズを計測する関数
 unsigned long get_file_size(char *fname){
