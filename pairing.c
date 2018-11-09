@@ -21,7 +21,7 @@ char str[1000];
 double start_time, finish_time;
 
 void set_crypto_data();
-void question(int flag);
+void question_print(int flag);
 char *get_str_data(char *user, char *data);
 void calc_result_str_convert_to_key_origin(char *key, Element calc_result);
 
@@ -79,7 +79,7 @@ int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, 
     }
     fwrite(outbuf, 1, outlen, fout);
     finish_time = omp_get_wtime();
-    printf("[time = %.20lf] ", finish_time-start_time);
+    printf("[time = %23.20lf] ", finish_time-start_time);
     EVP_CIPHER_CTX_cleanup(&ctx);
     fcloses(fin, fout, NULL);
     frees(inbuf, outbuf, NULL);
@@ -220,7 +220,7 @@ void decode_key_twice(char *key, const char *raQ_char) {
     /* --- 変換 --- */
     calc_result_str_convert_to_key_origin(key, calc_result);
     /* --- 領域解放 --- */
-    mpz_clears(a_one,NULL);
+    mpz_clear(a_one);
     point_clear(raQ); point_clear(a1P);
     element_clear(g2); element_clear(g2_inv); element_clear(mgr); element_clear(calc_result);
 }
@@ -277,6 +277,8 @@ void calc_result_str_convert_to_key_origin(char *key, Element calc_result) {
     printf("[key decrypt time = %.20lf]\n", finish_time-start_time);
     print_green_color("AES key = "); printf("%s\n", msg_decode);
     strcpy(key, msg_decode);
+    /* --- 領域解放 --- */
+    free(calc_result_str);
 }
 
 // 暗号化・復号に必要なデータを揃える関数
@@ -353,18 +355,22 @@ void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda,
             point_set_str(raP, get_str_data("A", "aP")); point_mul(raP, r, raP);
             Element gra; element_init(gra, p->g3); pairing_map(gra, raP, Q, p);
             element_get_str(keyB, gra);
+            /* --- 領域解放 --- */
+            point_clear(raP); element_clear(gra);
         } else if(mode == 2) {
             /* --- r(aQ) を計算 --- */
             EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, get_str_data("A", "aQ"));
             point_mul(raQ, r, raQ); point_get_str(keyB, raQ);
+            /* --- 領域解放 --- */
+            point_clear(raQ);
         }
         /* --- アウトプット --- */
         output_key_txt("keyA", outfolda, keyA);
         output_key_txt("keyB", outfolda, keyB);
+        printf("データの暗号化が完了しました．\n");
     } else if(mode != 3){
         printf("データの復号が完了しました．\n");
     }
-    
     closedir(indir);
 }
 
@@ -376,24 +382,26 @@ int main(void){
     
     // モード決定
     do{
-        question(flag); scanf("%d", &input);
+        question_print(flag); scanf("%d", &input);
         switch (flag) {
             case 0:
-                input==1 ? flag=1 : input==0 ? flag=2 : question(99);
+                input==1 ? flag=1 : input==0 ? flag=2 : question_print(99);
                 break;
             case 1:
                 crypt_mode = 1;
-                input==1 ? flag=3 : input==2 ? mode=3 : question(100);
+                input==1 ? flag=3 : input==2 ? mode=3 : question_print(100);
                 break;
             case 2:
                 crypt_mode = 0;
-                input==1 ? flag=4 : input==2 ? mode=6 : question(100);
+                input==1 ? flag=4 : input==2 ? mode=6 : question_print(100);
                 break;
             case 3:
-                input==1 ? mode=1 : input==2 ? mode=2 : question(100);
+                mode = input==1 ? 1 : input==2 ? 2 : 0;
+                if(mode==0) question_print(100);
                 break;
             case 4:
-                input==1 ? mode=4 : input==2 ? mode=5 : question(100);
+                mode = input==1 ? 4 : input==2 ? 5 : 0;
+                if(mode==0) question_print(100);
                 break;
         }
     }while(mode == 0);
@@ -415,12 +423,11 @@ int main(void){
             strcpy(infolda,  "Enc");
             strcpy(outfolda, "Dec");
             break;
-        default:
-            error_notice(9999, "", __func__, __LINE__);
     }
     
     set_crypto_data();
     AES_folda_inputkey(mode, crypt_mode, infolda, outfolda, iv);
+    
     return 0;
 }
 
@@ -430,12 +437,12 @@ void set_crypto_data(){
     point_init(P, p->g1); point_init(Q, p->g2);
     mpz_init(a); mpz_init(b); mpz_init(r); mpz_init(limit);
     /* --- 上限値を設定 --- */
-    char limit_char[78]; mpz_set_str(limit, get_str_data("ALL", "limit"), 10);
+    mpz_set_str(limit, get_str_data("ALL", "limit"), 10);
     /* --- 乱数rを設定 --- */
     create_mpz_t_random(r, limit);
     /* --- 点P, Qを設定 --- */
-    char P_char[132]; point_init(P, p->g1); point_set_str(P, get_str_data("ALL", "P"));
-    char Q_char[261]; point_init(Q, p->g2); point_set_str(Q, get_str_data("ALL", "Q"));
+    point_init(P, p->g1); point_set_str(P, get_str_data("ALL", "P"));
+    point_init(Q, p->g2); point_set_str(Q, get_str_data("ALL", "Q"));
 }
 
 char *get_str_data(char *user, char *data){
@@ -461,7 +468,7 @@ char *get_str_data(char *user, char *data){
     return str;
 }
 
-void question(int flag){
+void question_print(int flag){
     if(flag==0) printf("暗号化するなら1, 復号するなら0を入力: ");
     else if(flag==1) printf("暗号化するなら1, 再暗号化するなら2を入力: ");
     else if(flag==2) printf("暗号化したものを復号するなら1, 再暗号化したものを復号するなら2を入力: ");

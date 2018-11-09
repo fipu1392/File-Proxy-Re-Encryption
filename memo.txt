@@ -41,3 +41,21 @@ g = element: 1de912a43adea5cea83bb9569371351df8fbeed3dd5ed993254c56b3ca47753d 31
 
 aQ = point: [1d0858af3df1800c8bd5b4429562b2ff342831ae06427ad3b3a475d3a6926a9a 7fe138ea9b20359ccb342193e07280907dfdf26507afc7150ffc261ab2e862e,22a45b5aea9323acaafeca9cead95468b969e57503822cb1b5ac47cacc50294 1b19cd7e5e026cf7f99a885da5ebdd2d0f8ce4960af0877aa227ed89e653b4c5]
 bQ = point: [20da50265cce166800d4b86ae0fc33a6451601656c59e0947864fc09094f8c70 2296a00cfdec54b2c7570c0320a46dc3723ecfc4596f14c2b78dc598f20e0283,13f34c050459919b8bc5564013c9186deac845bd8d2d19e0892d2b0b4022a09 2041f9074fd0cf4840d647b4ae89aea70ec36a899564fccbef02fb366e3b10cf]
+
+
+// mpz_t型の数値の桁数を取得する(小数点以下は未対応)
+unsigned long get_length_type_mpz_t(mpz_t num){
+    unsigned long length = 0;
+    mpz_t q, ori, ten;
+    mpz_init(q);
+    mpz_init_set(ori, num);
+    mpz_init_set_ui (ten, 10);
+
+    while (1) {
+        mpz_tdiv_q(q, ori, ten);
+        mpz_set(ori, q);
+        length++;
+        if(mpz_cmp_ui(ori, 0) == 0) break;
+    }
+    return length;
+}
