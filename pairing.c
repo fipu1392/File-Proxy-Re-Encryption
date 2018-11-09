@@ -11,6 +11,13 @@
 #include "settings.h"
 #include "openssl/evp.h"
 
+#define ENCRYPT_INFOLDA     "Plain"
+#define ENCRYPT_OUTFOLDA    "Enc"
+#define RE_ENCRYPT_INFOLDA  "Enc"
+#define RE_ENCRYPT_OUTFOLDA "Enc"
+#define DECRYPT_INFOLDA     "Enc"
+#define DECRYPT_OUTFOLDA    "Dec"
+
 #define MESSAGE_SIZE 10000
 #define CODE_SIZE MESSAGE_SIZE/sizeof(long)
 
@@ -21,7 +28,6 @@ char str[1000];
 double start_time, finish_time;
 
 void set_crypto_data();
-void question_print(int flag);
 char *get_str_data(char *user, char *data);
 void calc_result_str_convert_to_key_origin(char *key, Element calc_result);
 
@@ -103,7 +109,7 @@ void load_key_txt(char *load_name, unsigned char *infolda, unsigned char *key){
     char loadfilename[1000];
     sprintf(loadfilename,"%s/%s.txt",infolda, load_name);
     loadfile = fopen(loadfilename, "r");
-    if (loadfile == NULL) error_notice(1002, load_name, __func__, __LINE__);
+    if (loadfile == NULL) error_notice(1002, loadfilename, __func__, __LINE__);
     unsigned char str[1024]; fgets(str,1024,loadfile); strcpy(key, str);
     fclose(loadfile);
 }
@@ -281,153 +287,144 @@ void calc_result_str_convert_to_key_origin(char *key, Element calc_result) {
     free(calc_result_str);
 }
 
-// 暗号化・復号に必要なデータを揃える関数
-void AES_folda_inputkey(int mode, int crypt_mode, char *infolda, char *outfolda, unsigned char *iv){
+// 暗号化・復号しないファイル名のチェック
+int check_filename(char *filename) {
+    int ret = 0;
+    if(strcmp(filename, "keyA.txt") == 0) ret = 1;
+    else if(strcmp(filename, "keyB.txt") == 0) ret = 1;
+    else if(strcmp(filename, "keyC.txt") == 0) ret = 1;
+    return ret;
+}
+
+// ファイルを読み取り，暗号化・復号する(関数を実行する)関数
+void file_conversion(int do_encrypt, char *infolda, char *outfolda, char *key, unsigned char *iv){
     DIR *indir;
     struct dirent *dp;
-    char original[100];
-    char operated[100];
-    unsigned char keyA[1024], keyB[1024], keyC[1024]; // A: mg^r, B: g^(ra)||r(aQ), C: g^rb
-    
-    if((indir = opendir(infolda)) == NULL) error_notice(1003, infolda, __func__, __LINE__);
-    else if((opendir(outfolda)) == NULL) error_notice(1003, outfolda, __func__, __LINE__);
-    
-    if(mode == 1 || mode == 2) {
-        while(1){
-            printf("暗号化を行います．\nAES鍵の入力(15-70文字): "); scanf("%s",keyA);
-            if(15<=strlen(keyA) && strlen(keyA)<=70) break;
-            else printf("15文字以上70文字以内で入力してください．\n");
-        }
-    } else if(mode == 3){
-        printf("再暗号化中です．\n");
-        load_key_txt("keyB", infolda, keyB);
-        if(*keyB != '[') error_notice(2000, "", __func__, __LINE__);
-        re_encipher_key(keyB, keyC);
-        output_key_txt("keyC", outfolda, keyC);
-        printf("再暗号化が完了しました．\n");
-    } else {
-        printf("データを復号します．\n");
-        load_key_txt("keyA", infolda, keyA);
-        if(mode == 4) {
-            load_key_txt("keyB", infolda, keyB);
-            if(*keyB == '[') error_notice(2001, "", __func__, __LINE__);
-            decode_key_once(keyA, keyB);
-        } else if(mode == 5){
-            load_key_txt("keyB", infolda, keyB);
-            if(*keyB != '[') error_notice(2002, "", __func__, __LINE__);
-            decode_key_twice(keyA, keyB);
-        } else if(mode == 6){
-            load_key_txt("keyC", infolda, keyC);
-            decode_re_key(keyA, keyC);
-        }
-    }
-    
-    if(mode != 3){
-        for(dp=readdir(indir); dp!=NULL; dp=readdir(indir)){
-            if(*dp->d_name != '.') {
-                if(strcmp(dp->d_name, "keyA.txt") == 0){
-                    if(mode == 1) printf("仕様上 \"keyA.txt\" は暗号化できません．暗号化をスキップします．\n");
-                    continue;
-                }
-                else if(strcmp(dp->d_name, "keyB.txt") == 0){
-                    if(mode == 1) printf("仕様上 \"keyB.txt\" は暗号化できません．暗号化をスキップします．\n");
-                    continue;
-                }
-                else if(strcmp(dp->d_name, "keyC.txt") == 0){
-                    if(mode == 1) printf("仕様上 \"keyC.txt\" は暗号化できません．暗号化をスキップします．\n");
-                    continue;
-                }
-                sprintf(original,"%s/%s",infolda,dp->d_name);   // オリジナルのファイル名生成
-                sprintf(operated,"%s/%s",outfolda,dp->d_name);  // 処理ファイル名生成
-                AES(original, operated, keyA, iv, crypt_mode);  // ここでファイルの暗号化・復号処理
-                printf("%s -> %s\n", original, operated);
+    char original[1024], operated[1024];
+    indir=opendir(infolda);
+
+    for(dp=readdir(indir); dp!=NULL; dp=readdir(indir)){
+        if(*dp->d_name != '.') {
+            if(check_filename(dp->d_name)) {
+                if(do_encrypt)
+                    printf("仕様上 \"%s\" は暗号化できません．暗号化をスキップします．\n", dp->d_name);
+                continue;
             }
+            sprintf(original,"%s/%s",infolda,dp->d_name);   // オリジナルのファイル名生成
+            sprintf(operated,"%s/%s",outfolda,dp->d_name);  // 処理ファイル名生成
+            AES(original, operated, key, iv, do_encrypt);   // ファイルの暗号化・復号処理
+            printf("%s -> %s\n", original, operated);
         }
-    }
-    
-    if(mode == 1 || mode == 2) {
-        /* --- keyAを暗号化 --- */
-        encipher_key(keyA);
-        /* --- keyBを計算 --- */
-        if(mode == 1) {
-            /* --- g^(ra) を計算 --- */
-            EC_POINT raP; point_init(raP, p->g1);
-            point_set_str(raP, get_str_data("A", "aP")); point_mul(raP, r, raP);
-            Element gra; element_init(gra, p->g3); pairing_map(gra, raP, Q, p);
-            element_get_str(keyB, gra);
-            /* --- 領域解放 --- */
-            point_clear(raP); element_clear(gra);
-        } else if(mode == 2) {
-            /* --- r(aQ) を計算 --- */
-            EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, get_str_data("A", "aQ"));
-            point_mul(raQ, r, raQ); point_get_str(keyB, raQ);
-            /* --- 領域解放 --- */
-            point_clear(raQ);
-        }
-        /* --- アウトプット --- */
-        output_key_txt("keyA", outfolda, keyA);
-        output_key_txt("keyB", outfolda, keyB);
-        printf("データの暗号化が完了しました．\n");
-    } else if(mode != 3){
-        printf("データの復号が完了しました．\n");
     }
     closedir(indir);
 }
 
+void encrypt_mode(unsigned char *iv){
+    int mode=0;
+    unsigned char keyA[1024], keyB[1024];
+    
+    while(1){
+        printf("再暗号化できないようにするなら1, 再暗号化できるようにするなら2を入力: "); scanf("%d", &mode);
+        if(mode!=0) break;
+        printf("1または2を入力してください．\n");
+    }
+    
+    while(1){
+        printf("暗号化を行います．\nAES鍵の入力(15-70文字): "); scanf("%s",keyA);
+        if(15<=strlen(keyA) && strlen(keyA)<=70) break;
+        else printf("15文字以上70文字以内で入力してください．\n");
+    }
+    
+    // ファイルの暗号化
+    file_conversion(1, ENCRYPT_INFOLDA, ENCRYPT_OUTFOLDA, keyA, iv);
+
+    // 鍵の暗号化
+    set_crypto_data();
+    encipher_key(keyA); // keyA
+    if(mode == 1) {     // keyB
+        /* --- g^(ra) を計算 --- */
+        EC_POINT raP; point_init(raP, p->g1);
+        point_set_str(raP, get_str_data("A", "aP")); point_mul(raP, r, raP);
+        Element gra; element_init(gra, p->g3); pairing_map(gra, raP, Q, p);
+        element_get_str(keyB, gra);
+        /* --- 領域解放 --- */
+        point_clear(raP); element_clear(gra);
+    } else if(mode == 2) {
+        /* --- r(aQ) を計算 --- */
+        EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, get_str_data("A", "aQ"));
+        point_mul(raQ, r, raQ); point_get_str(keyB, raQ);
+        /* --- 領域解放 --- */
+        point_clear(raQ);
+    }
+    
+    /* --- アウトプット --- */
+    output_key_txt("keyA", ENCRYPT_OUTFOLDA, keyA);
+    output_key_txt("keyB", ENCRYPT_OUTFOLDA, keyB);
+    printf("データの暗号化が完了しました．\n");
+}
+
+void re_encrypt_mode() {
+    char keyB[1024], keyC[1024];
+    load_key_txt("keyB", RE_ENCRYPT_INFOLDA, keyB);
+    if(*keyB != '[') error_notice(2000, "", __func__, __LINE__);
+    print_green_color("再暗号化を行います．\n");
+    set_crypto_data();
+    re_encipher_key(keyB, keyC);
+    output_key_txt("keyC", RE_ENCRYPT_OUTFOLDA, keyC);
+    printf("再暗号化が完了しました．\n");
+}
+
+void decrypt_mode(unsigned char *iv) {
+    int mode;
+    unsigned char keyA[1024], keyB[1024], keyC[1024];
+
+    // 復号モード決定
+    if(file_existence("./Enc/", "keyC.txt")) {
+        mode = 1;
+    } else {
+        load_key_txt("keyB", DECRYPT_INFOLDA, keyB);
+        mode = *keyB == '[' ? 2 : 3;
+    }
+
+    // 復号処理
+    set_crypto_data();
+    load_key_txt("keyA", DECRYPT_INFOLDA, keyA);
+    if(mode == 1) {
+        print_green_color("再暗号化したデータの復号を開始します．\n");
+        load_key_txt("keyC", DECRYPT_INFOLDA, keyC);
+        decode_re_key(keyA, keyC);
+    } else if(mode == 2) {
+        print_green_color("再暗号化できる(けどしていない)データの復号を開始します．\n");
+        decode_key_twice(keyA, keyB);
+    } else if(mode == 3) {
+        print_green_color("再暗号化できないデータの復号を開始します．\n");
+        decode_key_once(keyA, keyB);
+    }
+    
+    // ファイルの復号
+    file_conversion(0, DECRYPT_INFOLDA, DECRYPT_OUTFOLDA, keyA, iv);
+    printf("復号が完了しました．\n");
+}
+
 int main(void){
+    // key.\.txt -> A: mg^r, B: g^(ra)||r(aQ), C: g^rb
     char infolda[6]  = "";
     char outfolda[6] = "";
     unsigned char iv[] ="0123456789abcdef";
-    int input, mode=0, flag=0, crypt_mode;
+    int input, mode=0, flag=0, do_encrypt;
     
     // モード決定
-    do{
-        question_print(flag); scanf("%d", &input);
-        switch (flag) {
-            case 0:
-                input==1 ? flag=1 : input==0 ? flag=2 : question_print(99);
-                break;
-            case 1:
-                crypt_mode = 1;
-                input==1 ? flag=3 : input==2 ? mode=3 : question_print(100);
-                break;
-            case 2:
-                crypt_mode = 0;
-                input==1 ? flag=4 : input==2 ? mode=6 : question_print(100);
-                break;
-            case 3:
-                mode = input==1 ? 1 : input==2 ? 2 : 0;
-                if(mode==0) question_print(100);
-                break;
-            case 4:
-                mode = input==1 ? 4 : input==2 ? 5 : 0;
-                if(mode==0) question_print(100);
-                break;
-        }
-    }while(mode == 0);
-    
-    // フォルダ決定
-    switch (mode) {
-        case 1:
-        case 2:
-            strcpy(infolda,  "Plain");
-            strcpy(outfolda, "Enc");
-            break;
-        case 3:
-            strcpy(infolda,  "Enc");
-            strcpy(outfolda, "Enc");
-            break;
-        case 4:
-        case 5:
-        case 6:
-            strcpy(infolda,  "Enc");
-            strcpy(outfolda, "Dec");
-            break;
+    while(1){
+        printf("暗号化するなら1, 再暗号化するなら2, 復号するなら0を入力: "); scanf("%d", &input);
+        mode = input==1 ? 1 : input==2 ? 2 : input==0 ? 3 : 0;
+        if(mode!=0) break;
+        printf("0, 1, 2もいずれかを入力してください，\n");
     }
     
-    set_crypto_data();
-    AES_folda_inputkey(mode, crypt_mode, infolda, outfolda, iv);
-    
+    if(mode == 1) encrypt_mode(iv);
+    else if(mode == 2) re_encrypt_mode(iv);
+    else if(mode == 3) decrypt_mode(iv);
+
     return 0;
 }
 
@@ -448,32 +445,16 @@ void set_crypto_data(){
 char *get_str_data(char *user, char *data){
     /* --- 通知 --- */
     printf("\x1b[46m\x1b[30m");
-    if(strcmp(user, "ALL")==0){
-        printf("データ %s を取得しました．", data);
-    } else {
-        printf("User %s が知る %s を利用します．", user, data);
-    }
+    if(strcmp(user, "ALL")==0) printf("データ %s を取得しました．", data);
+    else printf("User %s が知る %s を利用します．", user, data);
     printf("\x1b[49m\x1b[39m\n");
     /* --- 読み込み --- */
     FILE *loadfile;
     char loadfilename[1000];
     sprintf(loadfilename,"stakeholder/%s/%s.txt",user, data);
     loadfile = fopen(loadfilename, "r");
-    if (loadfile == NULL) {
-        printf("%s/%s.txtを開けませんでした．\n", user, data);
-        exit(1);
-    }
+    if (loadfile == NULL) error_notice(1002, loadfilename, __func__, __LINE__);
     fgets(str,1000,loadfile);
     fclose(loadfile);
     return str;
-}
-
-void question_print(int flag){
-    if(flag==0) printf("暗号化するなら1, 復号するなら0を入力: ");
-    else if(flag==1) printf("暗号化するなら1, 再暗号化するなら2を入力: ");
-    else if(flag==2) printf("暗号化したものを復号するなら1, 再暗号化したものを復号するなら2を入力: ");
-    else if(flag==3) printf("再暗号化できないようにするなら1, 再暗号化できるようにするなら2を入力: ");
-    else if(flag==4) printf("再暗号化できないものなら1, 再暗号化していないものなら2を入力: ");
-    else if(flag==99) printf("0または1を入力してください。\n");
-    else if(flag==100) printf("1または2を入力してください。\n");
 }

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <dirent.h>
 
 // 緑色の文字を出力する
 void print_green_color(const char *text){printf("\x1b[32m%s\x1b[39m",text);}
@@ -106,6 +107,20 @@ void create_mpz_t_random(mpz_t op, const mpz_t n) {
     gmp_randclear(state);
 }
 
+// ファイルの存在を確認する関数(0: false, 1: true)
+int file_existence(char *dir_path, char *filename){
+    DIR *dir;
+    struct dirent *dp;
+    int ret = 0;
+    
+    dir=opendir(dir_path);
+    for(dp=readdir(dir); dp!=NULL; dp=readdir(dir))
+        if(strcmp(dp->d_name, filename)==0) ret = 1;
+    closedir(dir);
+    
+    return ret;
+}
+
 // エラー内容を出力する関数
 //format: error_notice(code, memo, __func__, __LINE__);
 void error_notice(int error_code, char *memo, const char *func_name, int line) {
@@ -122,7 +137,7 @@ void error_notice(int error_code, char *memo, const char *func_name, int line) {
             break;
         case 1002:
             printf("FILE OPEN ERROR\n");
-            printf("鍵を読み込む時に %s.txt を開けませんでした．\n", memo);
+            printf("鍵を読み込む時に %s を開けませんでした．\n", memo);
             if(strcmp(memo, "keyC")==0) printf("再暗号化の処理を行なっていない可能性があります．\n");
             break;
         case 1003:
