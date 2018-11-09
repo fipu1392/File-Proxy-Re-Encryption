@@ -90,29 +90,30 @@ int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, 
 }
 
 // 鍵を出力する関数
-void output_key_txt(char *output_name, unsigned char *outfolda, unsigned char *key) {
+void output_key_txt(char *output_name, char *outfolda, char *key1, char *key2) {
     FILE *outfile;
     char openfilename[1000];
     sprintf(openfilename,"%s/%s.txt", outfolda, output_name);
     outfile = fopen(openfilename, "w+");
     if (outfile == NULL) error_notice(1001, output_name, __func__, __LINE__);
-    fprintf(outfile, "%s", key);
+    fprintf(outfile, "%s\n", key1); fprintf(outfile, "%s", key2);
     fclose(outfile);
 }
 
 // 鍵を読み込む関数
-void load_key_txt(char *load_name, unsigned char *infolda, unsigned char *key){
+void load_key_txt(char *load_name, char *infolda, char *key1, char *key2){
     FILE *loadfile;
-    char loadfilename[1000];
+    char loadfilename[1000], str[1024];
     sprintf(loadfilename,"%s/%s.txt",infolda, load_name);
     loadfile = fopen(loadfilename, "r");
     if (loadfile == NULL) error_notice(1002, loadfilename, __func__, __LINE__);
-    unsigned char str[1024]; fgets(str,1024,loadfile); strcpy(key, str);
+    fgets(str,1024,loadfile); str[strlen(str)-1] = '\0'; strcpy(key1, str);
+    fgets(str,1024,loadfile); strcpy(key2, str);
     fclose(loadfile);
 }
 
 // 鍵を暗号化する関数
-void encipher_key(unsigned char *msg) {
+void encipher_key(char *msg) {
     int i, msg_len = strlen(msg), roop_num = msg_len/sizeof(long) + 1;
     start_time = omp_get_wtime();
     /* -- g = e(P, Q)^r を生成 --- */
@@ -147,7 +148,7 @@ void encipher_key(unsigned char *msg) {
 }
 
 // 鍵を再暗号化する関数
-void re_encipher_key(unsigned char *raQ_char, char *keyC) {
+void re_encipher_key(char *raQ_char, char *keyC) {
     start_time = omp_get_wtime();
     /* --- r(aQ) をセット --- */
     EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, raQ_char);
@@ -287,9 +288,8 @@ void calc_result_str_convert_to_key_origin(char *key, Element calc_result) {
 // 暗号化・復号しないファイル名のチェック
 int check_filename(char *filename) {
     int ret = 0;
-    if(strcmp(filename, "keyA.txt") == 0) ret = 1;
-    else if(strcmp(filename, "keyB.txt") == 0) ret = 1;
-    else if(strcmp(filename, "keyC.txt") == 0) ret = 1;
+    if(strcmp(filename, "C_a.txt") == 0) ret = 1;
+    else if(strcmp(filename, "C_b.txt") == 0) ret = 1;
     return ret;
 }
 
@@ -318,7 +318,7 @@ void file_conversion(int do_encrypt, char *infolda, char *outfolda, char *key, u
 
 void encrypt_mode(unsigned char *iv){
     int mode=0;
-    unsigned char keyA[1024], keyB[1024];
+    char keyA[1024], keyB[1024];
     
     while(1){
         printf("再暗号化できないようにするなら1, 再暗号化できるようにするなら2を入力: "); scanf("%d", &mode);
@@ -355,40 +355,38 @@ void encrypt_mode(unsigned char *iv){
     }
     
     /* --- アウトプット --- */
-    output_key_txt("keyA", ENCRYPT_OUTFOLDA, keyA);
-    output_key_txt("keyB", ENCRYPT_OUTFOLDA, keyB);
+    output_key_txt("C_a", ENCRYPT_OUTFOLDA, keyA, keyB);
     printf("データの暗号化が完了しました．\n");
 }
 
 void re_encrypt_mode() {
-    char keyB[1024], keyC[1024];
-    load_key_txt("keyB", RE_ENCRYPT_INFOLDA, keyB);
+    char keyA[1024], keyB[1024], keyC[1024];
+    load_key_txt("C_a", RE_ENCRYPT_INFOLDA, keyA, keyB);
     if(*keyB != '[') error_notice(2000, "", __func__, __LINE__);
     print_green_color("再暗号化を行います．\n");
     set_crypto_data();
     re_encipher_key(keyB, keyC);
-    output_key_txt("keyC", RE_ENCRYPT_OUTFOLDA, keyC);
+    output_key_txt("C_b", RE_ENCRYPT_OUTFOLDA, keyA, keyC);
     printf("再暗号化が完了しました．\n");
 }
 
 void decrypt_mode(unsigned char *iv) {
     int mode;
-    unsigned char keyA[1024], keyB[1024], keyC[1024];
+    char keyA[1024], keyB[1024], keyC[1024];
 
     // 復号モード決定
-    if(file_existence("./Enc/", "keyC.txt")) {
+    if(file_existence("./Enc/", "C_b.txt")) {
+        load_key_txt("C_b", DECRYPT_INFOLDA, keyA, keyC);
         mode = 1;
     } else {
-        load_key_txt("keyB", DECRYPT_INFOLDA, keyB);
+        load_key_txt("C_a", DECRYPT_INFOLDA, keyA, keyB);
         mode = *keyB == '[' ? 2 : 3;
     }
 
     // 復号処理
     set_crypto_data();
-    load_key_txt("keyA", DECRYPT_INFOLDA, keyA);
     if(mode == 1) {
         print_green_color("再暗号化したデータの復号を開始します．\n");
-        load_key_txt("keyC", DECRYPT_INFOLDA, keyC);
         decode_re_key(keyA, keyC);
     } else if(mode == 2) {
         print_green_color("再暗号化できる(けどしていない)データの復号を開始します．\n");
