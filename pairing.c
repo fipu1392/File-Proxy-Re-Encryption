@@ -22,12 +22,12 @@
 
 EC_PAIRING p;
 EC_POINT P, Q;
-mpz_t limit, a, b, r;
+mpz_t limit, a, b, sec_key, r;
 char str[1000];
 double start_time, finish_time;
 
 void set_crypto_data();
-void free_crypt_data();
+void free_crypto_data();
 char *get_str_data(char *user, char *data);
 void calc_result_str_convert_to_key_origin(char *key, Element calc_result);
 
@@ -116,7 +116,7 @@ void load_key_txt(char *load_name, char *infolda, char *key1, char *key2){
 }
 
 // 鍵を暗号化する関数
-void encipher_key(char *msg) {
+void encipher_keyA(char *msg) {
     int i, msg_len = strlen(msg), roop_num = msg_len/sizeof(long) + 1;
     start_time = omp_get_wtime();
     /* -- g = e(P, Q)^r を生成 --- */
@@ -197,37 +197,36 @@ void re_encipher_key(char *raQ_char, char *keyC) {
     mpz_clear(a_one); element_clear(grb);
 }
 
-// 通常の復号を行う関数
-void decode_key_once_mode(char *key, const char *gra_char) {
+// 復号を行う関数
+void decode_key_type_element(char *key, char *grs_char, char *user, char *sec_key_char) {
     start_time = omp_get_wtime();
-    /* --- g^(ra) をセット --- */
-    Element gra; element_init(gra, p->g3); element_set_str(gra, gra_char);
-    /* --- aをセット --- */
-    mpz_set_str(a, get_str_data(USER_A_DIR, "a"), 10);
-    /* --- 1/aを計算 --- */
-    mpz_t a_one; mpz_init(a_one); mpz_invert(a_one, a, limit);
-    /* --- (g^(ra))^(1/a) = g^r --- */
-    Element g3; element_init(g3, p->g3); element_pow(g3, gra, a_one);
-    /* --- g3の逆元を計算 --- */
-    Element g3_inv; element_init(g3_inv, p->g3); element_inv(g3_inv, g3);
+    /* --- Element(g^(ra)||g^(rb))をセット --- */
+    Element grs; element_init(grs, p->g3); element_set_str(grs, grs_char);
+    /* --- 秘密鍵(a||b)をセット --- */
+    mpz_set_str(sec_key, get_str_data(user, sec_key_char), 10);
+    /* --- 1/(secret_key)を計算 --- */
+    mpz_t sec_key_one; mpz_init(sec_key_one); mpz_invert(sec_key_one, sec_key, limit);
+    /* --- g^r を算出 --- */
+    Element gr; element_init(gr, p->g3); element_pow(gr, grs, sec_key_one);
+    /* --- g^rの逆元を計算 --- */
+    Element gr_inv; element_init(gr_inv, p->g3); element_inv(gr_inv, gr);
     /* --- 鍵をElementにセットする --- */
     Element mgr; element_init(mgr, p->g3); element_set_str(mgr, key);
     /* --- 割り算する(mg^r/g^r) --- */
     Element calc_result; element_init(calc_result, p->g3);
-    element_mul(calc_result, mgr, g3_inv);
+    element_mul(calc_result, mgr, gr_inv);
     /* --- 変換 --- */
     calc_result_str_convert_to_key_origin(key, calc_result);
     /* --- 領域解放 --- */
-    element_clear(gra); element_clear(g3); element_clear(g3_inv);
-    element_clear(mgr); element_clear(calc_result);
-    mpz_clear(a_one);
+    element_clear(grs); element_clear(gr); element_clear(gr_inv);
+    element_clear(mgr); element_clear(calc_result); mpz_clear(sec_key_one);
 }
-void decode_key_twice_mode(char *key, const char *raQ_char) {
+void decode_key_type_point(char *key, char *point_char, char *user, char *sec_key) {
     start_time = omp_get_wtime();
     /* --- r(aQ) をセット --- */
-    EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, raQ_char);
+    EC_POINT raQ; point_init(raQ, p->g2); point_set_str(raQ, point_char);
     /* --- aをセット --- */
-    mpz_set_str(a, get_str_data(USER_A_DIR, "a"), 10);
+    mpz_set_str(a, get_str_data(user, sec_key), 10);
     /* --- 1/aを計算 --- */
     mpz_t a_one; mpz_init(a_one); mpz_invert(a_one, a, limit);
     /* --- (1/a)Pを計算 --- */
@@ -247,31 +246,6 @@ void decode_key_twice_mode(char *key, const char *raQ_char) {
     mpz_clear(a_one);
     point_clear(raQ); point_clear(a1P);
     element_clear(g2); element_clear(g2_inv); element_clear(mgr); element_clear(calc_result);
-}
-
-// 再暗号化の復号を行う関数
-void decode_re_key(char *key, char *grb_char) {
-    start_time = omp_get_wtime();
-    /* --- g^(rb)をセット --- */
-    Element grb; element_init(grb, p->g3); element_set_str(grb, grb_char);
-    /* --- bをセット --- */
-    mpz_set_str(b, get_str_data(USER_B_DIR, "b"), 10);
-    /* --- 1/bを計算 --- */
-    mpz_t b_one; mpz_init(b_one); mpz_invert(b_one, b, limit);
-    /* --- (g^(rb))^(1/b) = g^r --- */
-    Element g3; element_init(g3, p->g3); element_pow(g3, grb, b_one);
-    /* --- g3の逆元を計算 --- */
-    Element g3_inv; element_init(g3_inv, p->g3); element_inv(g3_inv, g3);
-    /* --- 鍵をElementにセットする --- */
-    Element mgr; element_init(mgr, p->g3); element_set_str(mgr, key);
-    /* --- 割り算する(mg^r/g^r) --- */
-    Element calc_result; element_init(calc_result, p->g3);
-    element_mul(calc_result, mgr, g3_inv);
-    /* --- 変換 --- */
-    calc_result_str_convert_to_key_origin(key, calc_result);
-    /* --- 領域解放 --- */
-    element_clear(grb); element_clear(g3); element_clear(g3_inv); element_clear(mgr);
-    mpz_clear(b_one); element_clear(calc_result);
 }
 // Element型のmをcharに変換
 void calc_result_str_convert_to_key_origin(char *key, Element calc_result) {
@@ -358,10 +332,10 @@ void encrypt_mode(unsigned char *iv){
 
     // 鍵の暗号化
     set_crypto_data();
-    encipher_key(keyA); // keyA
+    encipher_keyA(keyA);
     if(mode == 1) encipher_keyB_once_mode(keyB);
     else if(mode == 2) encipher_keyB_twice_mode(keyB);
-    free_crypt_data();
+    free_crypto_data();
     
     /* --- アウトプット --- */
     output_key_txt("C_a", ENCRYPT_OUT_DIR, keyA, keyB);
@@ -376,7 +350,7 @@ void re_encrypt_mode() {
     print_green_color("再暗号化を行います．\n");
     set_crypto_data();
     re_encipher_key(keyB, keyC);
-    free_crypt_data();
+    free_crypto_data();
     output_key_txt("C_b", RE_ENCRYPT_OUT_DIR, keyA, keyC);
     printf("再暗号化が完了しました．\n");
 }
@@ -384,11 +358,11 @@ void re_encrypt_mode() {
 // 復号モード
 void decrypt_mode(unsigned char *iv) {
     int mode;
-    char keyA[1024], keyB[1024], keyC[1024];
+    char keyA[1024], keyB[1024];
 
     // 復号モード決定
     if(file_exist("./Enc/", "C_b.txt")) {
-        load_key_txt("C_b", DECRYPT_IN_DIR, keyA, keyC);
+        load_key_txt("C_b", DECRYPT_IN_DIR, keyA, keyB);
         mode = 1;
     } else {
         load_key_txt("C_a", DECRYPT_IN_DIR, keyA, keyB);
@@ -399,15 +373,15 @@ void decrypt_mode(unsigned char *iv) {
     set_crypto_data();
     if(mode == 1) {
         print_green_color("再暗号化したデータの復号を開始します．\n");
-        decode_re_key(keyA, keyC);
+        decode_key_type_element(keyA, keyB, USER_B_DIR, "b");
     } else if(mode == 2) {
         print_green_color("再暗号化できる(けどしていない)データの復号を開始します．\n");
-        decode_key_twice_mode(keyA, keyB);
+        decode_key_type_point(keyA, keyB, USER_A_DIR, "a");
     } else if(mode == 3) {
         print_green_color("再暗号化できないデータの復号を開始します．\n");
-        decode_key_once_mode(keyA, keyB);
+        decode_key_type_element(keyA, keyB, USER_A_DIR, "a");
     }
-    free_crypt_data();
+    free_crypto_data();
     
     // ファイルの復号
     file_conversion(0, DECRYPT_IN_DIR, DECRYPT_OUT_DIR, keyA, iv);
@@ -415,7 +389,7 @@ void decrypt_mode(unsigned char *iv) {
 }
 
 int main(void){
-    // key.\.txt -> A: mg^r, B: g^(ra)||r(aQ), C: g^rb
+    // key -> A: mg^r, B: g^(ra)||r(aQ), C: g^rb
     unsigned char iv[] ="0123456789abcdef";
     int input, mode;
     
@@ -437,7 +411,7 @@ void set_crypto_data(){
     /* --- 初期化 --- */
     pairing_init(p, "ECBN254a");
     point_init(P, p->g1); point_init(Q, p->g2);
-    mpz_init(a); mpz_init(b); mpz_init(r); mpz_init(limit);
+    mpz_init(sec_key); mpz_init(a); mpz_init(b); mpz_init(r); mpz_init(limit);
     /* --- 上限値を設定 --- */
     mpz_set_str(limit, get_str_data("ALL", "limit"), 10);
     /* --- 乱数rを設定 --- */
@@ -446,9 +420,9 @@ void set_crypto_data(){
     point_init(P, p->g1); point_set_str(P, get_str_data("ALL", "P"));
     point_init(Q, p->g2); point_set_str(Q, get_str_data("ALL", "Q"));
 }
-void free_crypt_data() {
+void free_crypto_data() {
     point_clear(P); point_clear(Q);
-    mpz_clears(a, b, r, limit, NULL);
+    mpz_clears(a, b, r, sec_key, limit, NULL);
     pairing_clear(p);
 }
 
