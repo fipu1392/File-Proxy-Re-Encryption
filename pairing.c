@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>   //pass, getopt
 #include <omp.h>
 
 #include <gmp.h>
@@ -23,12 +24,14 @@
 EC_PAIRING p;
 EC_POINT P, Q;
 mpz_t limit, a, b, sec_key, r;
+int data_print=0, size_print=0, time_print=0;
 char str[1000];
 double start_time, finish_time;
 
 void set_crypto_data();
 void free_crypto_data();
 char *get_str_data(char *user, char *data);
+void option_analyze(int argc, char *argv[]);
 void calc_result_str_convert_to_key_origin(char *key, Element calc_result);
 
 // AESを実際に行う関数
@@ -49,7 +52,7 @@ int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, 
     //バッファサイズの設定
     unsigned long in_size;
     in_size = get_file_size(in_fname);
-    printf("[size = %9lu]", in_size);
+    if(size_print) printf("[size = %9lu]", in_size);
 
     if((inbuf = malloc(sizeof(char)*in_size)) == NULL)
         error_notice(1000, "inbuf", __func__, __LINE__);
@@ -85,7 +88,7 @@ int AES(char *in_fname, char *out_fname, unsigned char *key, unsigned char *iv, 
     }
     fwrite(outbuf, 1, outlen, fout);
     finish_time = omp_get_wtime();
-    printf("[time = %23.20lf] ", finish_time-start_time);
+    if(time_print) printf("[time = %23.20lf] ", finish_time-start_time);
     EVP_CIPHER_CTX_cleanup(&ctx);
     fcloses(fin, fout, NULL);
     frees(inbuf, outbuf, NULL);
@@ -142,7 +145,7 @@ void encipher_keyA(char *msg) {
     element_init(element_msg_key_calc_result, p->g3);
     element_mul(element_msg_key_calc_result, element_msg, g);
     finish_time = omp_get_wtime();
-    printf("[key encrypt time = %.20lf]\n", finish_time-start_time);
+    if(time_print) printf("[key encrypt time = %.20lf]\n", finish_time-start_time);
     /* --- 計算結果をmsgに挿入 --- */
     element_get_str(msg, element_msg_key_calc_result);
     /* --- 領域解放 --- */
@@ -185,7 +188,7 @@ void re_encipher_key(char *raQ_char, char *keyC) {
     /* --- grb = e((1/a)bP, raQ) = e(P, Q)^rb --- */
     Element grb; element_init(grb, p->g3); pairing_map(grb, re_Key, raQ, p);
     finish_time = omp_get_wtime();
-    printf("[key re-encrypt time = %.20lf]\n", finish_time-start_time);
+    if(time_print) printf("[key re-encrypt time = %.20lf]\n", finish_time-start_time);
     int grb_char_size = element_get_str_length(grb);
     char *grb_char;
     if((grb_char = (char *)malloc(element_get_str_length(grb)+1)) == NULL)
@@ -272,7 +275,7 @@ void calc_result_str_convert_to_key_origin(char *key, Element calc_result) {
     memset(msg_decode,0,sizeof(msg_decode));
     memcpy(msg_decode,dec_msg_long,sizeof(char)*70); // TODO: 70でいいの？
     finish_time = omp_get_wtime();
-    printf("[key decrypt time = %.20lf]\n", finish_time-start_time);
+    if(time_print) printf("[key decrypt time = %.20lf]\n", finish_time-start_time);
     print_green_color("AES key = "); printf("%s\n", msg_decode);
     strcpy(key, msg_decode);
     /* --- 領域解放 --- */
@@ -339,7 +342,7 @@ void encrypt_mode(unsigned char *iv){
     
     /* --- アウトプット --- */
     output_key_txt("C_a", ENCRYPT_OUT_DIR, keyA, keyB);
-    printf("データの暗号化が完了しました．\n");
+    print_green_color("データの暗号化が完了しました．\n");
 }
 
 // 再暗号化モード
@@ -352,7 +355,7 @@ void re_encrypt_mode() {
     re_encipher_key(keyB, keyC);
     free_crypto_data();
     output_key_txt("C_b", RE_ENCRYPT_OUT_DIR, keyA, keyC);
-    printf("再暗号化が完了しました．\n");
+    print_green_color("再暗号化が完了しました．\n");
 }
 
 // 復号モード
@@ -385,13 +388,16 @@ void decrypt_mode(unsigned char *iv) {
     
     // ファイルの復号
     file_conversion(0, DECRYPT_IN_DIR, DECRYPT_OUT_DIR, keyA, iv);
-    printf("復号が完了しました．\n");
+    print_green_color("復号が完了しました．\n");
 }
 
-int main(void){
+int main(int argc, char *argv[]){
     // key -> A: mg^r, B: g^(ra)||r(aQ), C: g^rb
     unsigned char iv[] ="0123456789abcdef";
     int input, mode;
+
+    // オプション判別
+    option_analyze(argc, argv);
     
     // モード決定
     while(1){
@@ -428,10 +434,12 @@ void free_crypto_data() {
 
 char *get_str_data(char *user, char *data){
     /* --- 通知 --- */
-    printf("\x1b[46m\x1b[30m");
-    if(strcmp(user, "ALL")==0) printf("データ %s を取得しました．", data);
-    else printf("User %s が知る %s を利用します．", user, data);
-    printf("\x1b[49m\x1b[39m\n");
+    if(data_print) {
+        printf("\x1b[46m\x1b[30m");
+        if(strcmp(user, "ALL")==0) printf("データ %s を取得しました．", data);
+        else printf("User %s が知る %s を利用します．", user, data);
+        printf("\x1b[49m\x1b[39m\n");
+    }
     /* --- 読み込み --- */
     FILE *loadfile;
     char loadfilename[1000];
@@ -441,4 +449,24 @@ char *get_str_data(char *user, char *data){
     fgets(str,1000,loadfile);
     fclose(loadfile);
     return str;
+}
+
+void option_analyze(int argc, char *argv[]){
+    int x;
+    while((x = getopt(argc, argv, "dts")) != -1) {
+        switch (x) {
+            case 'd': // どのデータを利用したか表示
+                data_print = 1;
+                break;
+            case 't': // 処理時間を表示
+                time_print = 1;
+                break;
+            case 's': // ファイルサイズを表示
+                size_print = 1;
+                break;
+            default:
+                printf("無効なオプションが選択されました.\n");
+                break;
+        }
+    }
 }
